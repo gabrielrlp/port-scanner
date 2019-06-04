@@ -6,7 +6,7 @@ import socket, sys
 from socket import AF_PACKET, SOCK_RAW
 from struct import *
 
-def sendeth(eth_frame, interface = "eth0"):
+def sendeth(eth_frame, interface = 'enp4s0'):
 	"""Send raw Ethernet packet on interface."""
 	s = socket.socket(AF_PACKET, SOCK_RAW)
 	s.bind((interface, 0))
@@ -16,7 +16,7 @@ def checksum(msg):
 	s = 0
 	# loop taking 2 characters at a time
 	for i in range(0, len(msg), 2):
-		w = (ord(msg[i]) << 8) + (ord(msg[i+1]))
+		w = (msg[i] << 8) + (msg[i+1])
 		s = s + w
 
 	s = (s >> 16) + (s & 0xffff)
@@ -68,16 +68,18 @@ def make_ipv6_header(version, traffic_class, flow_label, payload_len, next_heade
 	:param src_address: (128-bits) This field indicates the address of originator of the packet.
 	:param dst_address: (128-bits) This field provides the address of intended recipient of the packet.
 	"""
-	packet_format = '!BBHHBB16s16s'
+	packet_format = '!IHBB'
+	ver_traffic_flow = (version << 8) + traffic_class
+	ver_traffic_flow = (ver_traffic_flow << 20) + flow_label
+
 	ipv6_header = pack(packet_format,
-			   (version << 4) + 0,
-			   traffic_class,
-			   (flow_label << 16) + 0,
+			   ver_traffic_flow,
 			   payload_len,
 			   next_header,
-			   hop_limit,
-			   socket.inet_pton(socket.AF_INET6, src_address),
-			   socket.inet_pton(socket.AF_INET6, dst_address))
+			   hop_limit)
+	ipv6_header = ipv6_header + \
+		      socket.inet_pton(socket.AF_INET6, src_address) + \
+		      socket.inet_pton(socket.AF_INET6, src_address)
 	return ipv6_header
 
 def make_tcp_header(src_port, dst_port, seq_num, ack_seq, header_len, fin, syn, rst, psh, ack, urg, window, check, urg_ptr):
@@ -134,17 +136,20 @@ def make_tcp_header(src_port, dst_port, seq_num, ack_seq, header_len, fin, syn, 
 			  socket.htons(window),
 			  check,
 			  urg_ptr)
+	return tcp_header
 
 
 if __name__ == "__main__":
 	# src=fe:ed:fa:ce:be:ef, dst=52:54:00:12:35:02, type=0x0800 (IP)
-	dst_mac = [0xff, 0xff, 0xff, 0xff, 0xff, 0xff]
-	src_mac = [0x00, 0x0a, 0x11, 0x11, 0x22, 0x22]	
+	# a4:1f:72:f5:90:80
+	dst_mac = [0xa4, 0x1f, 0x72, 0xf5, 0x90, 0x80]
+	src_mac = [0xa4, 0x1f, 0x72, 0xf5, 0x90, 0x80]
+#	src_mac = [0x00, 0x0a, 0x11, 0x11, 0x22, 0x22]	
 	# Ethernet header
 	eth_header = make_eth_header(dst_mac, src_mac, 0x0800)
 	
-	source_ip = '192.168.1.101'
-	dest_ip = '192.168.1.1'			# or socket.gethostbyname('www.google.com')
+	source_ip = 'fe80::a61f:72ff:fef5:9080'
+	dest_ip = 'fe80::a61f:72ff:fef5:9080'
 
 	ip_header = make_ipv6_header(6,			    # version
                                	     0,			    # traffic class
@@ -170,25 +175,39 @@ if __name__ == "__main__":
                                	     0,		  # checksum
                                	     0)		  # urg ptr
 
-	############################# CONTINUAR ##################################
-	 
 	# pseudo header fields
-	source_address = socket.inet_aton( source_ip )
-	dest_address = socket.inet_aton(dest_ip)
+	source_address = socket.inet_pton(socket.AF_INET6, source_ip)
+	dest_address = socket.inet_pton(socket.AF_INET6, dest_ip)
 	placeholder = 0
 	protocol = socket.IPPROTO_TCP
 	tcp_length = len(tcp_header)
-	 
-	psh = pack('!4s4sBBH' , source_address , dest_address , placeholder , protocol , tcp_length);
-	psh = psh + tcp_header;
-	 
+
+	psh = source_address + dest_address + pack('!BBH', placeholder, protocol, tcp_length)
+	psh = psh + tcp_header
+	print(psh)
+
 	tcp_checksum = checksum(psh)
-	 
+
 	# make the tcp header again and fill the correct checksum
-	tcp_header = pack('!HHLLBBHHH' , source, dest, seq, ack_seq, offset_res, tcp_flags,  window, tcp_checksum , urg_ptr)
+	tcp_header = make_tcp_header(1234,	  # source port
+                               	     80, 	  # destination port
+                               	     0,		  # sequence number
+                               	     0,		  # ack sequence
+                               	     5,		  # header length
+                               	     0,		  # fin
+                               	     1,		  # syn
+                               	     0,		  # rst
+                               	     0,		  # psh
+                               	     0,		  # ack
+                               	     0,		  # urg
+                               	     5840,	  # window
+                               	     tcp_checksum,# checksum
+                               	     0)		  # urg ptr
+
+	
 	 
 	# final full packet - syn packets dont have any data
 	packet = eth_header + ip_header + tcp_header
-	r = sendeth(packet, "enp1s0")
+	r = sendeth(packet, "enp4s0")
 	
 	print("Sent %d bytes" % r)
