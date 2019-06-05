@@ -146,7 +146,7 @@ if __name__ == "__main__":
 	src_mac = [0xa4, 0x1f, 0x72, 0xf5, 0x90, 0x80]
 #	src_mac = [0x00, 0x0a, 0x11, 0x11, 0x22, 0x22]	
 	# Ethernet header
-	eth_header = make_eth_header(dst_mac, src_mac, 0x84dd)
+	eth_header = make_eth_header(dst_mac, src_mac, 0x86dd)
 	
 	source_ip = 'fe80::a61f:72ff:fef5:9080'
 	dest_ip = 'fe80::a61f:72ff:fef5:9080'
