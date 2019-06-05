@@ -154,7 +154,7 @@ if __name__ == "__main__":
 	ip_header = make_ipv6_header(6,			    # version
                                	     0,			    # traffic class
                                	     1,			    # flow label
-                               	     20 + 20,		    # payload length
+                               	     20,		    # payload length
                                	     socket.IPPROTO_TCP,    # next header
                                	     255,		    # hop limit
                                	     source_ip,		    # source address
