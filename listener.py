@@ -1,4 +1,5 @@
 import socket, sys
+from struct import *
 
 def listener():
     listen = socket.socket(socket.AF_INET6, socket.SOCK_RAW, socket.IPPROTO_TCP)
@@ -15,8 +16,7 @@ def listener():
 
         # This is the IP header, not including Destination Address. Normal length is 40 bytes.
         # We're parsing as little as possible
-        print(len(packet))
-        # ip_header = unpack('!IHBB',packet[0:24])
+        ip_header = unpack('!IHBB', packet[0:8])
 
 if __name__ == "__main__":
     listener()

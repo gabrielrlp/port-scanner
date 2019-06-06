@@ -29,8 +29,9 @@ def checksum(msg):
 
 if __name__ == "__main__":
 	# d8:cb:8a:cc:6a:c4
-	dst_mac = [0xd8, 0xcb, 0x8a, 0xcc, 0x6a, 0xc4]
-	src_mac = [0xd8, 0xcb, 0x8a, 0xcc, 0x6a, 0xc4]		
+	dst_mac = [0x08, 0x00, 0x27, 0x7e, 0x58, 0x8a]
+	src_mac = [0x08, 0x00, 0x27, 0x84, 0x2f, 0x4c]	
+	
 	# Ethernet header
 	eth_header = EthernetHeader(
 		dst_mac = dst_mac,
@@ -39,8 +40,8 @@ if __name__ == "__main__":
 	)
 	eth_packet = eth_header.assembly()
 	
-	src_ip = 'fe80::9994:b4ab:3ea0:a988'
-	dst_ip = 'fe80::9994:b4ab:3ea0:a988'
+	src_ip = 'fe80::b4d0:30fe:eef6:8ba2'
+	dst_ip = 'fe80::5e26:b3a7:8dac:c619'
 	# ip header
 	ip_header = IPHeader(
 		version = 6,
@@ -56,7 +57,7 @@ if __name__ == "__main__":
 
 	tcp_header = TCPHeader(
 		src_port = 1234,
-		dst_port = 80,
+		dst_port = 8033,
 		seq_num = 0,
 		ack_seq = 0,
 		header_len = 5,
@@ -85,6 +86,7 @@ if __name__ == "__main__":
 	 
 	# final full packet - syn packets dont have any data
 	packet = eth_packet + ip_packet + tcp_packet
-	r = sendeth(packet, 'enp0s31f6')
+	r = sendeth(packet, 'enp0s3')
+	print(packet)
 	
 	print("Sent %d bytes" % r)
