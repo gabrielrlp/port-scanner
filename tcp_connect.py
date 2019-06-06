@@ -2,6 +2,8 @@
 # TCP Header https://www.gatevidyalay.com/wp-content/uploads/2018/09/TCP-Header-Format.png
 # IPv6 Header http://ipv6.br/post/cabecalho/
 import socket, sys
+import argparse
+
 from socket import AF_PACKET, SOCK_RAW
 from struct import *
 
@@ -9,7 +11,19 @@ from ethernet_header import EthernetHeader
 from ip_header import IPHeader
 from tcp_header import TCPHeader
 
-def sendeth(eth_frame, interface = 'enp4s0'):
+# Arguments Parsing Settings
+parser = argparse.ArgumentParser()
+
+# Main arguments for configuration
+parser.add_argument('--smac', help="the source MAC address (aa:bb:cc:dd:ee:ff)", required=True)
+parser.add_argument('--dmac', help="the destination MAC address (aa:bb:cc:dd:ee:ff)", required=True)
+parser.add_argument('--sip', help="the source IP address (aaaa:bbbb:cccc:dddd:eeee)", required=True)
+parser.add_argument('--dip', help="the destination IP address (aaaa:bbbb:cccc:dddd:eeee)", required=True)
+parser.add_argument('--interface', '--i', help="the interface to be used", default='enp0s3')
+# Debug configurations
+parser.add_argument('--debug', '--d', help="enter in the debug mode", default=False)
+
+def sendeth(eth_frame, interface):
 	"""Send raw Ethernet packet on interface."""
 	s = socket.socket(AF_PACKET, SOCK_RAW)
 	s.bind((interface, 0))
@@ -28,9 +42,12 @@ def checksum(msg):
 	return s
 
 if __name__ == "__main__":
-	# d8:cb:8a:cc:6a:c4
-	dst_mac = [0x08, 0x00, 0x27, 0x7e, 0x58, 0x8a]
-	src_mac = [0x08, 0x00, 0x27, 0x84, 0x2f, 0x4c]	
+	args = parser.parse_args()	
+
+	# Parse the Source and Destination MAC address
+	src_mac = [(int(v, 16)) for v in args.smac.split(':')]
+	dst_mac = [(int(v, 16)) for v in args.dmac.split(':')]
+	if args.debug: print('Source MAC: {}\nDestination MAC: {}'.format(src_mac, dst_mac))
 	
 	# Ethernet header
 	eth_header = EthernetHeader(
@@ -39,9 +56,7 @@ if __name__ == "__main__":
 		type = 0x86dd
 	)
 	eth_packet = eth_header.assembly()
-	
-	src_ip = 'fe80::b4d0:30fe:eef6:8ba2'
-	dst_ip = 'fe80::5e26:b3a7:8dac:c619'
+
 	# ip header
 	ip_header = IPHeader(
 		version = 6,
@@ -50,8 +65,8 @@ if __name__ == "__main__":
 		payload_len = 20,
 		next_header = socket.IPPROTO_TCP,
 		hop_limit = 255,
-		src_address = src_ip,
-		dst_address = dst_ip
+		src_address = args.sip,
+		dst_address = args.dip
 	)
 	ip_packet = ip_header.assembly()
 
@@ -86,7 +101,8 @@ if __name__ == "__main__":
 	 
 	# final full packet - syn packets dont have any data
 	packet = eth_packet + ip_packet + tcp_packet
-	r = sendeth(packet, 'enp0s3')
-	print(packet)
+	r = sendeth(packet, args.interface)
+
+	if args.debug: print(packet)
 	
 	print("Sent %d bytes" % r)
