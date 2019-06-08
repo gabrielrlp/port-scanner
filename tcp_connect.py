@@ -81,7 +81,7 @@ if __name__ == "__main__":
 		syn = 1,
 		rst = 0,
 		psh = 0,
-		ack = 0,
+		ack = 1,
 		urg = 0,
 		window = 5840,
 		checksum = 0,
