@@ -17,8 +17,12 @@ FLAGS_RST = 4
 # 010000
 FLAGS_ACK = 16
 
-def threaded(listen):
+def threaded(listen, address):
+    """
+    Thread that waits for either TCP Connect Attack or TCP Half-opening Attack
+    """
     print("Started thread...")
+    print(address)
     while True:
         # We should put this packet receiving code inside a single function for reusability
         # Receive packet
@@ -41,16 +45,22 @@ def threaded(listen):
             # Get TCP flags
             flags = int(tcp_header[5])
 
+            # TODO: GET ATTACKER ADDRESS 
+
+            # Should check address as well
             if(flags == FLAGS_ACK):
-                print("!! RECEIVED A TCP CONNECT ATTACK !!")
+                print("!! RECEIVED A TCP CONNECT ATTACK FROM ADDRESS X !!")
                 break
             elif(flags == FLAGS_RST):
-                print("!! RECEIVED A TCP HALF OPENING ATTACK !!")
+                print("!! RECEIVED A TCP HALF OPENING ATTACK FROM ADDRESS X !!")
                 break
 
     print("Exiting thread...")
 
 def listener():
+    """
+    This listener represents the main attack detection component.
+    """
     # Creates raw socket
     listen = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(3))
 
@@ -77,25 +87,22 @@ def listener():
             flags = int(tcp_header[5])
             print(flags)
 
-            # This listener should warn which type of attack it is receiving
-            # TCP connect attack
-            # expected: SYN and later an ACK
-            # TCP half-opening
-            # expected: SYN and later an RST
+            # TODO: GET ATTACKER ADDRESS
 
+            mocked_address = "testing123"
+
+            # TCP Connect Attack and Half-opening handling
             if (flags == FLAGS_SYN):
-                # await ACK or RST
-                start_new_thread(threaded, (listen,))
+                # Starts new thread that waits for ACK or RST 
+                start_new_thread(threaded, (listen, mocked_address,))
 
-            # Stealth scan ou TCP FIN
-            # expected: FIN
+            # Stealth scan / TCP FIN handling
             elif (flags == FLAGS_FIN):
-                print('stealth scan ou tcp fin')
+                print("!! RECEIVED STEALTH SCAN/TCP FIN FROM ADDRESS X !!")
 
-            # SYN/ACK
-            # expected: SYN/ACK
+            # SYN/ACK attack handling
             elif (flags == FLAGS_SYN_ACK):
-                print('syn / ack')
+                print("!! RECEIVED SYN/ACK ATTACK FROM ADDRESS X !!")
         
 if __name__ == "__main__":
     listener()
