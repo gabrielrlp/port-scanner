@@ -19,7 +19,7 @@ def listener():
     print("Starting Listener")
     while True:
         raw_packet = listen.recvfrom(65565)
-        packet = rawintellisense_packet[0]
+        packet = raw_packet[0]
         # Now we need to unpack the packet. It will be an TCP packet
         # We want to pull out and compare only these three
 
