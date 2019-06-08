@@ -3,19 +3,23 @@ from struct import *
 
 PROTOCOL_TYPE_IPV6 = 0x86dd
 
-# definir inteiros, nao adianta pai, nao via funcionar o bitwise. pe no chao, joga facil, cautelinha
-#SYN = 
-#SYN_ACK =
-#FIN =
-#RST = 
-#ACK =
+# 000010
+FLAGS_SYN = 2
+# 010010 
+FLAGS_SYN_ACK = 18
+# 000001
+FLAGS_FIN = 1
+# 000100
+FLAGS_RST = 4
+# 010000
+FLAGS_ACK = 16
 
 def listener():
     listen = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(3))
     print("Starting Listener")
     while True:
         raw_packet = listen.recvfrom(65565)
-        packet = raw_packet[0]
+        packet = rawintellisense_packet[0]
         # Now we need to unpack the packet. It will be an TCP packet
         # We want to pull out and compare only these three
 
@@ -47,7 +51,7 @@ def listener():
             # TCP half-opening
             # expected: SYN and later an RST
 
-            if ((flags & 0b10) == int(0b10)):
+            if (flags == FLAGS_SYN):
                 print('esperar pacote com ack(tcp connect) ou rst(tcp half-opening)')
                 print('aha2: ', bin(flags))
                 # await ACK or RST
@@ -56,12 +60,12 @@ def listener():
 
             # Stealth scan ou TCP FIN
             # expected: FIN
-            elif (flags & 0b1 == int(0b1)):
+            elif (flags == FLAGS_FIN):
                 print('stealth scan ou tcp fin')
 
             # SYN/ACK
             # expected: SYN/ACK
-            elif (flags & 0b10010 == int(0b10010)):
+            elif (flags == FLAGS_SYN_ACK):
                 print('syn / ack')
         
 if __name__ == "__main__":
