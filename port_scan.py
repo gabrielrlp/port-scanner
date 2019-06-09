@@ -30,11 +30,6 @@ if __name__ == "__main__":
 	# Parse the Source and Destination MAC address
 	src_mac = [(int(v, 16)) for v in args.smac.split(':')]
 	dst_mac = [(int(v, 16)) for v in args.dmac.split(':')]
-	print("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
-	print(args.tcp_connect)
-	print(args.tcp_half_opening)
-	print(args.tcp_fin)
-	print(args.syn_ack)
 	procs = []
 	if len(args.port) == 2:
 		for p in range(args.port[0], args.port[1] + 1):
