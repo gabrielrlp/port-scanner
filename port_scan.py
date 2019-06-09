@@ -30,9 +30,12 @@ if __name__ == "__main__":
 	# Parse the Source and Destination MAC address
 	src_mac = [(int(v, 16)) for v in args.smac.split(':')]
 	dst_mac = [(int(v, 16)) for v in args.dmac.split(':')]
-
+	print("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	print(args.tcp_connect)
+	print(args.tcp_half_opening)
+	print(args.tcp_fin)
+	print(args.syn_ack)
 	procs = []
-
 	if len(args.port) == 2:
 		for p in range(args.port[0], args.port[1] + 1):
 			# TCP Connect
@@ -81,12 +84,62 @@ if __name__ == "__main__":
 				proc = Process(target=syn_ack.start)
 			else:
 				print('[INFO] Error - Please specify a scan type')
-				break
+				exit();
 			procs.append(proc)
 			proc.start()
+	elif len(args.port) == 1:
+		p = args.port[0]
+		if args.tcp_connect:
+			tcp_connect = TCPConnect(
+				src_mac = src_mac,
+				dst_mac = dst_mac,
+				src_ip = args.sip,
+				dst_ip = args.dip,
+				interface = args.interface,
+				src_port = DEFAULT_SRC_PORT,
+				dst_port = p)
+			proc = Process(target=tcp_connect.start)
+		# TCP Half-Opening
+		elif args.tcp_half_opening:
+			tcp_half_opening = TCPHalfOpening(
+				src_mac = src_mac,
+				dst_mac = dst_mac,
+				src_ip = args.sip,
+				dst_ip = args.dip,
+				interface = args.interface,
+				src_port = DEFAULT_SRC_PORT,
+				dst_port = p)
+			proc = Process(target=tcp_half_opening.start)
+		# TCP Fin
+		elif args.tcp_fin:
+			tcp_fin = TCPFin(
+				src_mac = src_mac,
+				dst_mac = dst_mac,
+				src_ip = args.sip,
+				dst_ip = args.dip,
+				interface = args.interface,
+				src_port = DEFAULT_SRC_PORT,
+				dst_port = p)
+			proc = Process(target=tcp_fin.start)
+		# SYN/ACK
+		elif args.syn_ack:
+			syn_ack = SYNACK(
+				src_mac = src_mac,
+				dst_mac = dst_mac,
+				src_ip = args.sip,
+				dst_ip = args.dip,
+				interface = args.interface,
+				src_port = DEFAULT_SRC_PORT,
+				dst_port = p)
+			proc = Process(target=syn_ack.start)
+		else:
+			print('[INFO] Error - Please specify a scan type')
+			exit();
+
+		procs.append(proc)
+		proc.start()
 	else:
-		# tentar corrigir pra cair no if anterior
-		print('uma porta')
+		print('[INFO] Error - Invalid port or port range.')
 
 	for proc in procs:
 		proc.join()
