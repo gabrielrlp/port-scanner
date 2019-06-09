@@ -1,4 +1,4 @@
-import socket, sys
+import socket, time
 
 from ethernet_header import EthernetHeader
 from ip_header import IPHeader
@@ -7,12 +7,11 @@ from utils import sendeth, checksum, bcolors
 
 from struct import *
 
-class TCPConnect:
+class TCPFin:
     """
-    TCP Connect
-    - An SYN message is sent to a port
-    - If the port is open, an SYN/ACK will be received
-    - The handshake's phase is concluded with an ACK
+    TCP Fin
+    - An FIN message is sent to a port
+    - If the port is close, an RST will be received; else the port is open
     """
     def __init__(self, src_mac, dst_mac, src_ip, dst_ip, interface, src_port, dst_port):
         self.src_mac = src_mac
@@ -22,6 +21,7 @@ class TCPConnect:
         self.interface = interface
         self.src_port = src_port
         self.dst_port = dst_port
+        self.timeout = 5 # seconds
 
         # Construct the Ethernet header
         self.eth_header = EthernetHeader(
@@ -51,7 +51,7 @@ class TCPConnect:
             seq_num = 0,
             ack_seq = 0,
             header_len = 5,
-            fin = 0, syn = 1, rst = 0, psh = 0, ack = 0, urg = 0,
+            fin = 1, syn = 0, rst = 0, psh = 0, ack = 0, urg = 0,
             window = 5840,
             checksum = 0,
             urg_ptr = 0
@@ -62,7 +62,11 @@ class TCPConnect:
         listen = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(3))
         # send syn
         sendeth(self.__packet(), self.interface)
-        while True:
+
+        flags = 0
+
+        timeout_start = time.time()
+        while time.time() < timeout_start + self.timeout:
             # Receive packet
             raw_packet = listen.recvfrom(128)
             packet = raw_packet[0]
@@ -86,20 +90,14 @@ class TCPConnect:
                     flags = int(tcp_header[5])
                     break
         
-        # if open, flags = syn & ack
-        if flags == 18: # 0b010010 
-            print('[INFO] Port [:{}] is '.format(self.dst_port) + \
-                  bcolors.OKGREEN + 'OPEN' + bcolors.ENDC)
-            # send ack to handshake
-            self.tcp_header.syn = 0
-            self.tcp_header.ack = 1
-            self.tcp_packet = self.tcp_header.assembly()
-            sendeth(self.__packet(), self.interface)
-
         # if closed, flags = rst & ack
-        elif flags == 20: # 0b010100
+        if flags == 20: # 0b010100 
             print('[INFO] Port [:{}] is '.format(self.dst_port) + \
                   bcolors.FAIL + 'CLOSE' + bcolors.ENDC)
+        else:
+            # the port is open
+            print('[INFO] Port [:{}] is '.format(self.dst_port) + \
+                  bcolors.OKGREEN + 'OPEN' + bcolors.ENDC)
 
     def __packet(self):
         # pseudo header fields

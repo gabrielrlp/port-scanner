@@ -64,22 +64,6 @@ class TCPHeader:
         self.urg_ptr = urg_ptr
         self.packet_format = '!HHLLBBHHH'
 
-    # def assembly_flags(self, fin, syn, rst, psh, ack, urg):
-    #     return  fin + \
-    #             (syn << 1) + \
-    #             (rst << 2) + \
-    #             (psh << 3) + \
-    #             (ack << 4) + \
-    #             (urg << 5)
-    
-    # def division_flags(self, flags):
-    #     self.fin = (flags >> 0 & 1)
-    #     self.syn = (flags >> 1 & 1)
-    #     self.rst = (flags >> 2 & 1)
-    #     self.psh = (flags >> 3 & 1)
-    #     self.ack = (flags >> 4 & 1)
-    #     self.urg = (flags >> 5 & 1)
-
     def assembly(self):
         tcp_flags = (self.fin)      + \
                     (self.syn << 1) + \

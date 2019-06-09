@@ -7,12 +7,11 @@ from utils import sendeth, checksum, bcolors
 
 from struct import *
 
-class TCPConnect:
+class SYNACK:
     """
-    TCP Connect
+    SYN/ACK
     - An SYN message is sent to a port
-    - If the port is open, an SYN/ACK will be received
-    - The handshake's phase is concluded with an ACK
+    - If the port is open, an RST will be received; else the port is close
     """
     def __init__(self, src_mac, dst_mac, src_ip, dst_ip, interface, src_port, dst_port):
         self.src_mac = src_mac
@@ -51,7 +50,7 @@ class TCPConnect:
             seq_num = 0,
             ack_seq = 0,
             header_len = 5,
-            fin = 0, syn = 1, rst = 0, psh = 0, ack = 0, urg = 0,
+            fin = 0, syn = 1, rst = 0, psh = 0, ack = 1, urg = 0,
             window = 5840,
             checksum = 0,
             urg_ptr = 0
@@ -86,18 +85,13 @@ class TCPConnect:
                     flags = int(tcp_header[5])
                     break
         
-        # if open, flags = syn & ack
-        if flags == 18: # 0b010010 
+        # if open, flags = rst
+        if flags == 4: # 0b000100
             print('[INFO] Port [:{}] is '.format(self.dst_port) + \
                   bcolors.OKGREEN + 'OPEN' + bcolors.ENDC)
-            # send ack to handshake
-            self.tcp_header.syn = 0
-            self.tcp_header.ack = 1
-            self.tcp_packet = self.tcp_header.assembly()
-            sendeth(self.__packet(), self.interface)
 
-        # if closed, flags = rst & ack
-        elif flags == 20: # 0b010100
+        # else close
+        else:
             print('[INFO] Port [:{}] is '.format(self.dst_port) + \
                   bcolors.FAIL + 'CLOSE' + bcolors.ENDC)
 

@@ -7,12 +7,12 @@ from utils import sendeth, checksum, bcolors
 
 from struct import *
 
-class TCPConnect:
+class TCPHalfOpening:
     """
-    TCP Connect
+    TCP Half-Opening
     - An SYN message is sent to a port
     - If the port is open, an SYN/ACK will be received
-    - The handshake's phase is concluded with an ACK
+    - An RST packet is sent to close the connection
     """
     def __init__(self, src_mac, dst_mac, src_ip, dst_ip, interface, src_port, dst_port):
         self.src_mac = src_mac
@@ -90,9 +90,9 @@ class TCPConnect:
         if flags == 18: # 0b010010 
             print('[INFO] Port [:{}] is '.format(self.dst_port) + \
                   bcolors.OKGREEN + 'OPEN' + bcolors.ENDC)
-            # send ack to handshake
+            # send rst to close the connection
             self.tcp_header.syn = 0
-            self.tcp_header.ack = 1
+            self.tcp_header.rst = 1
             self.tcp_packet = self.tcp_header.assembly()
             sendeth(self.__packet(), self.interface)
 
