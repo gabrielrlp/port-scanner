@@ -43,8 +43,3 @@ sudo python3 port_scan.py \
   --p 20 80
   --tcp-connect
 ```
-
-## Collaborators
-Bernardo Koefender
-Breno Lazari
-Gabriel Paz
