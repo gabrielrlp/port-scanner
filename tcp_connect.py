@@ -3,6 +3,7 @@ import socket, time
 from ethernet_header import EthernetHeader
 from ip_header import IPHeader
 from tcp_header import TCPHeader
+from listener import Listener
 from utils import sendeth, checksum, bcolors
 
 from struct import *
@@ -95,7 +96,7 @@ class TCPConnect:
                 pass
         
         # if open, flags = syn & ack
-        if flags == 18: # 0b010010 
+        if response_flags == 18: # 0b010010 
             print('[INFO] Port [:{}] is '.format(self.dst_port) + \
                   bcolors.OKGREEN + 'OPEN' + bcolors.ENDC)
             # send ack to handshake
@@ -105,7 +106,7 @@ class TCPConnect:
             sendeth(self.__packet(), self.interface)
 
         # if closed, flags = rst & ack
-        elif flags == 20: # 0b010100
+        elif response_flags == 20: # 0b010100
             print('[INFO] Port [:{}] is '.format(self.dst_port) + \
                   bcolors.FAIL + 'CLOSE' + bcolors.ENDC)
 
