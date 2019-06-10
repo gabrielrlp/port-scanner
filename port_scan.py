@@ -31,8 +31,9 @@ if __name__ == "__main__":
 	src_mac = [(int(v, 16)) for v in args.smac.split(':')]
 	dst_mac = [(int(v, 16)) for v in args.dmac.split(':')]
 	procs = []
-	if len(args.port) == 2:
-		for p in range(args.port[0], args.port[1] + 1):
+
+	if len(args.port) >= 1:
+		for p in range(args.port[0], args.port[-1] + 1):
 			# TCP Connect
 			if args.tcp_connect:
 				tcp_connect = TCPConnect(
@@ -134,7 +135,7 @@ if __name__ == "__main__":
 		procs.append(proc)
 		proc.start()
 	else:
-		print('[INFO] Error - Invalid port or port range.')
+		print('[INFO] Error - Invalid port or range')
 
 	for proc in procs:
 		proc.join()
