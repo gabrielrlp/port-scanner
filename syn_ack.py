@@ -3,7 +3,6 @@ import socket, time
 from ethernet_header import EthernetHeader
 from ip_header import IPHeader
 from tcp_header import TCPHeader
-from listener import Listener
 from utils import sendeth, checksum, bcolors
 
 from struct import *
@@ -95,7 +94,7 @@ class SYNACK:
                 pass
         
         # if open, flags = rst
-        if response_flags == 4: # 0b000100
+        if flags == 4: # 0b000100
             print('[INFO] Port [:{}] is '.format(self.dst_port) + \
                   bcolors.OKGREEN + 'OPEN' + bcolors.ENDC)
 
