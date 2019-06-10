@@ -60,35 +60,38 @@ class TCPFin:
 
     def start(self):
         listen = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(3))
+        listen.setblocking(0)
         # send syn
         sendeth(self.__packet(), self.interface)
 
         flags = 0
-
         timeout_start = time.time()
         while time.time() < timeout_start + self.timeout:
             # Receive packet
-            raw_packet = listen.recvfrom(128)
-            packet = raw_packet[0]
+            try:
+                raw_packet = listen.recvfrom(128)
+                packet = raw_packet[0]
+                
+                # Get ethernet header
+                eth_header = packet[0:14]
+
+                # Get protocol type; 0x86dd for IPv6
+                protocol_type = unpack('!6B6BH', eth_header)[12]
             
-            # Get ethernet header
-            eth_header = packet[0:14]
+                # Check for IPv6 only
+                if (protocol_type == int(0x86dd)):
+                    # Get TCP header
+                    tcp_header = unpack('!HHLLBBHHH', packet[54:74])
+                    # Get the TCP destionation and source ports
+                    tcp_src_port = tcp_header[0]
+                    tcp_dst_port = tcp_header[1]
 
-            # Get protocol type; 0x86dd for IPv6
-            protocol_type = unpack('!6B6BH', eth_header)[12]
-        
-            # Check for IPv6 only
-            if (protocol_type == int(0x86dd)):
-
-                # Get TCP header
-                tcp_header = unpack('!HHLLBBHHH', packet[54:74])
-
-                # Get TCP destination port
-                tcp_dst_port = tcp_header[1]
-                if tcp_dst_port == self.src_port:
-                    # Get TCP flags
-                    flags = int(tcp_header[5])
-                    break
+                    if tcp_dst_port == self.src_port and tcp_src_port == self.dst_port:
+                        # Return the received flags
+                        flags = int(tcp_header[5])
+                        break
+            except:
+                pass
         
         # if closed, flags = rst & ack
         if flags == 20: # 0b010100 
