@@ -83,57 +83,7 @@ if __name__ == "__main__":
 				exit();
 			procs.append(proc)
 			proc.start()
-	elif len(args.port) == 1:
-		p = args.port[0]
-		if args.tcp_connect:
-			tcp_connect = TCPConnect(
-				src_mac = src_mac,
-				dst_mac = dst_mac,
-				src_ip = args.sip,
-				dst_ip = args.dip,
-				interface = args.interface,
-				src_port = DEFAULT_SRC_PORT,
-				dst_port = p)
-			proc = Process(target=tcp_connect.start)
-		# TCP Half-Opening
-		elif args.tcp_half_opening:
-			tcp_half_opening = TCPHalfOpening(
-				src_mac = src_mac,
-				dst_mac = dst_mac,
-				src_ip = args.sip,
-				dst_ip = args.dip,
-				interface = args.interface,
-				src_port = DEFAULT_SRC_PORT,
-				dst_port = p)
-			proc = Process(target=tcp_half_opening.start)
-		# TCP Fin
-		elif args.tcp_fin:
-			tcp_fin = TCPFin(
-				src_mac = src_mac,
-				dst_mac = dst_mac,
-				src_ip = args.sip,
-				dst_ip = args.dip,
-				interface = args.interface,
-				src_port = DEFAULT_SRC_PORT,
-				dst_port = p)
-			proc = Process(target=tcp_fin.start)
-		# SYN/ACK
-		elif args.syn_ack:
-			syn_ack = SYNACK(
-				src_mac = src_mac,
-				dst_mac = dst_mac,
-				src_ip = args.sip,
-				dst_ip = args.dip,
-				interface = args.interface,
-				src_port = DEFAULT_SRC_PORT,
-				dst_port = p)
-			proc = Process(target=syn_ack.start)
-		else:
-			print('[INFO] Error - Please specify a scan type')
-			exit();
-
-		procs.append(proc)
-		proc.start()
+			
 	else:
 		print('[INFO] Error - Invalid port or range')
 
