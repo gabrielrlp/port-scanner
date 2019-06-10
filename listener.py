@@ -1,7 +1,11 @@
 import socket, sys
+import tkinter as tk
 from struct import *
 
 PROTOCOL_TYPE_IPV6 = 0x86dd
+WND_RESOLUTION     = "800x600"
+WND_TITLE          = "ListenerV6"
+
 
 # definir inteiros, nao adianta pai, nao via funcionar o bitwise. pe no chao, joga facil, cautelinha
 #SYN = 
@@ -9,6 +13,24 @@ PROTOCOL_TYPE_IPV6 = 0x86dd
 #FIN =
 #RST = 
 #ACK =
+
+class listenerWindow:
+    def __init__(self, master):
+        self.master = master
+        master.title(WND_TITLE)
+        master.geometry(WND_RESOLUTION)
+        self.w, self.h = WND_RESOLUTION.split("x",1)
+        self.w, self.h = int(self.w), int(self.h)
+
+        self.frmMain = tk.Frame(master, width = self.w, height = self.h, bg = 'white')
+        self.frmDisplay = tk.Frame(self.frmMain, width = (self.w-260), height = (self.h-60), bg = 'white smoke', highlightbackground = 'grey50')
+
+        self.btnCloseApp = tk.Button(self.frmMain, text="Exit", command=master.quit, height = 2, width = 6, bg = 'white', activebackground = 'white smoke' )
+
+
+        self.frmMain.place(x = 0, y = 0)
+        self.frmDisplay.place( x = 250, y = 50 )
+        self.btnCloseApp.place(x = 10, y = (self.h-50))
 
 def listener():
     listen = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(3))
@@ -31,7 +53,11 @@ def listener():
         if (protocol_type == int(PROTOCOL_TYPE_IPV6)):
             tcp_header = unpack('!HHLLBBHHH', packet[54:74])
             flags = int(tcp_header[5])
-            print(flags)
+            #print(flags)
+
+            #dst port
+            print(tcp_header[1])
+
 
             urg = tcp_header[5] >> 5 & 1
             ack = tcp_header[5] >> 4 & 1
@@ -46,9 +72,8 @@ def listener():
             # expected: SYN and later an ACK
             # TCP half-opening
             # expected: SYN and later an RST
-
             if ((flags & 0b10) == int(0b10)):
-                print('esperar pacote com ack(tcp connect) ou rst(tcp half-opening)')
+                # print('esperar pacote com ack(tcp connect) ou rst(tcp half-opening)')
                 print('aha2: ', bin(flags))
                 # await ACK or RST
                 # thread
@@ -65,4 +90,7 @@ def listener():
                 print('syn / ack')
         
 if __name__ == "__main__":
-    listener()
+    root = tk.Tk()
+    window = listenerWindow(root)
+    root.mainloop()
+    #listener()

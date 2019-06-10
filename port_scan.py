@@ -15,14 +15,14 @@ parser.add_argument('--smac', help="the source MAC address (aa:bb:cc:dd:ee:ff)",
 parser.add_argument('--dmac', help="the destination MAC address (aa:bb:cc:dd:ee:ff)", required=True)
 parser.add_argument('--sip', help="the source IP address (aaaa:bbbb:cccc:dddd:eeee)", required=True)
 parser.add_argument('--dip', help="the destination IP address (aaaa:bbbb:cccc:dddd:eeee)", required=True)
-parser.add_argument('--interface', '--i', help="the interface to be used", default='enp0s3')
-parser.add_argument('--port', '--p', type=int, nargs='+', help="the port to be scanned", required=True)
+parser.add_argument('--interface', '-i', help="the interface to be used", default='enp0s3')
+parser.add_argument('--port', '-p', type=int, nargs='+', help="the port to be scanned", required=True)
 parser.add_argument('--tcp-connect', action='store_true')
 parser.add_argument('--tcp-half-opening', action='store_true')
 parser.add_argument('--tcp-fin', action='store_true')
 parser.add_argument('--syn-ack', action='store_true')
 # Debug configurations
-parser.add_argument('--debug', '--d', help="enter in the debug mode", default=False)
+parser.add_argument('--debug', '-d', help="enter in the debug mode", default=False)
 
 if __name__ == "__main__":
 	args = parser.parse_args()	
