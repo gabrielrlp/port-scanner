@@ -80,10 +80,11 @@ if __name__ == "__main__":
 				proc = Process(target=syn_ack.start)
 			else:
 				print('[INFO] Error - Please specify a scan type')
-				exit();
+				raise
+
 			procs.append(proc)
 			proc.start()
-			
+
 	else:
 		print('[INFO] Error - Invalid port or range')
 
