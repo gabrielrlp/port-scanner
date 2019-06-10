@@ -5,6 +5,21 @@ from _thread import *
 import threading
 from datetime import timedelta
 
+# IPv6 type from ethernet header
+PROTOCOL_TYPE_IPV6 = 0x86dd
+
+## This is for the TCP flags statements
+# 000010
+FLAGS_SYN = 2
+# 010010 
+FLAGS_SYN_ACK = 18
+# 000001
+FLAGS_FIN = 1
+# 000100
+FLAGS_RST = 4
+# 010000
+FLAGS_ACK = 16
+
 def listener():
     """
     This listener represents the main attack detection component.
