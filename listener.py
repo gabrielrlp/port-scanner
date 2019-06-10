@@ -3,6 +3,7 @@ from struct import *
 from _thread import *
 import threading
 
+# IPv6 type from ethernet header
 PROTOCOL_TYPE_IPV6 = 0x86dd
 
 ## This is for the TCP flags statements
@@ -22,7 +23,6 @@ def threaded(listen, address):
     Thread that waits for either TCP Connect Attack or TCP Half-opening Attack
     """
     print("Started thread...")
-    print(address)
     while True:
         # We should put this packet receiving code inside a single function for reusability
         # Receive packet
@@ -57,6 +57,27 @@ def threaded(listen, address):
 
     print("Exiting thread...")
 
+def get_attacker_mac_address(eth_header):
+    """
+    Helper function to get a src mac address
+    """
+
+    # Unpack
+    unpacked_eth_header = unpack('!6B6BH', eth_header)
+
+    # Get attacker MAC address
+    raw_attacker_mac_address = unpacked_eth_header[6:12]
+
+    # Stringfy mac address
+    attacker_mac_address = ""
+    for m in raw_attacker_mac_address:
+        attacker_mac_address = attacker_mac_address + format(m, '02x') + ":"
+
+    # Remove last ':'
+    attacker_mac_address = attacker_mac_address[:-1]
+
+    return attacker_mac_address
+
 def listener():
     """
     This listener represents the main attack detection component.
@@ -70,13 +91,18 @@ def listener():
         # Receive packet
         raw_packet = listen.recvfrom(65565)
         packet = raw_packet[0]
-        
+
         # Get ethernet header
         eth_header = packet[0:14]
 
+        # Get attacker MAC address
+        attacker_mac_address = get_attacker_mac_address(eth_header)
+
+        #print("MAC: ", attacker_mac_address)
+
         # Get protocol type; 0x86dd for IPv6
         protocol_type = unpack('!6B6BH', eth_header)[12]
-    
+
         # Check for IPv6 only
         if (protocol_type == int(PROTOCOL_TYPE_IPV6)):
 
@@ -85,9 +111,10 @@ def listener():
 
             # Get TCP flags
             flags = int(tcp_header[5])
-            print(flags)
 
             # TODO: GET ATTACKER ADDRESS
+            source_address = packet[22:38]
+            print("attacker", source_address)
 
             mocked_address = "testing123"
 
