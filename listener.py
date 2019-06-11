@@ -3,6 +3,7 @@ from struct import *
 from _thread import *
 import threading
 from datetime import timedelta
+from datetime import datetime
 import tkinter as tk
 
 # IPv6 type from ethernet header
@@ -145,14 +146,16 @@ def listener():
         # Receive packet
         raw_packet = listen.recvfrom(65565)
         packet = raw_packet[0]
-
         # Get ethernet header
         eth_header = packet[0:14]
+
+        #Next header
+        print(packet.hex()[40:42])
 
         # Get protocol type; 0x86dd for IPv6
         protocol_type = unpack('!6B6BH', eth_header)[12]
 
-        # Check for IPv6 only
+        # Check for TCP IPv6 only
         if (protocol_type == int(PROTOCOL_TYPE_IPV6)):
 
             # Get TCP header
@@ -163,45 +166,55 @@ def listener():
 
             # TODO: GET ATTACKER IP ADDRESS
             source_address = packet[22:38].hex()
-            print(source_address)
-            sa1 = source_address[0:4]
-            sa2 = source_address[4:8]
-            sa3 = source_address[8:12]
-            sa4 = source_address[12:16]
-            sa5 = source_address[16:20]
-            sa6 = source_address[24:28]
-            sa7 = source_address[28:32]
+            #rint(source_address)
+            #sa1 = source_address[0:4]
+            #sa2 = source_address[4:8]
+            #sa3 = source_address[8:12]
+            #sa4 = source_address[12:16]
+            #sa5 = source_address[16:20]
+            #sa6 = source_address[24:28]
+            #sa7 = source_address[28:32]
 
-            print(sa1)
-            print(sa2)
-            print(sa3)
-            print(sa4)
-            print(sa5)
-            print(sa6)
-            print(sa7)
-            print(sa8)
+            sa = (source_address[ 0: 4]+"::"+
+                  source_address[ 4: 8]+":"+
+                  source_address[ 8:12]+":"+
+                  source_address[12:16]+":"+
+                  source_address[16:20]+":"+
+                  source_address[24:28]+":"+
+                  source_address[28:32])
+
+            #print(sa)
+
+
+            #print(sa1)
+            #print(sa2)
+            #print(sa3)
+            #print(sa4)
+            #print(sa5)
+            #print(sa6)
+            #print(sa7)
 
             #print("attacker{}", format(source_address))
 
             # Get possible attacker MAC address
             attacker_mac_address = get_attacker_mac_address(eth_header)
-            print("Receiving IPv6 packet from MAC address: {}".format(attacker_mac_address))
+            print(" IPv6 packet from IP, MAC: {} - {}".format(sa,attacker_mac_address))
 
             # Get target port
             target_port = int(tcp_header[1])
 
             # TCP Connect Attack and Half-opening handling
-            if (flags == FLAGS_SYN):
+            #if (flags == FLAGS_SYN):
                 # Starts new thread that waits for ACK or RST
-                start_new_thread(threaded, (listen, attacker_mac_address, target_port,))
+                #start_new_thread(threaded, (listen, attacker_mac_address, target_port,))
 
             # Stealth scan / TCP FIN handling
-            elif (flags == FLAGS_FIN):
-                print("!! RECEIVED STEALTH SCAN/TCP FIN FROM MAC ADDRESS {} on port {} !!".format(attacker_mac_address, target_port))
+            #elif (flags == FLAGS_FIN):
+                #print("!! RECEIVED STEALTH SCAN/TCP FIN FROM MAC ADDRESS {} on port {} !!".format(attacker_mac_address, target_port))
 
             # SYN/ACK attack handling
-            elif (flags == FLAGS_SYN_ACK):
-                print("!! RECEIVED SYN/ACK ATTACK FROM MAC ADDRESS {} on port {} !!".format(attacker_mac_address, target_port))
+            #elif (flags == FLAGS_SYN_ACK):
+                #print("!! RECEIVED SYN/ACK ATTACK FROM MAC ADDRESS {} on port {} !!".format(attacker_mac_address, target_port))
     
         
 
