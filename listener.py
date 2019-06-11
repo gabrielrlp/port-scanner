@@ -5,6 +5,16 @@ from _thread import *
 import threading
 from datetime import timedelta
 
+################
+# HELPER STUFF #
+################
+
+class Store(object):
+    def __init__(self, addr, port, type):
+        self.addr = ''
+        self.port = 0
+        self.type = 0
+
 # IPv6 type from ethernet header
 PROTOCOL_TYPE_IPV6 = 0x86dd
 
@@ -20,6 +30,12 @@ FLAGS_RST = 4
 # 010000
 FLAGS_ACK = 16
 
+# IPv6 next header for TCP
+IP_NEXT_HEADER_TCP = 17 
+
+# Interval timeout
+WAIT_TIMEOUT_SEC = 5
+
 def listener():
     """
     This listener represents the main attack detection component.
@@ -31,7 +47,7 @@ def listener():
     while True:
         # We should put this packet receiving code inside a single function for reusability
         # Receive packet
-        raw_packet = listen.recvfrom(65565)
+        raw_packet = listen.recvfrom(128)
         packet = raw_packet[0]
 
         # Get ethernet header
@@ -43,35 +59,46 @@ def listener():
         # Check for IPv6 only
         if (protocol_type == int(PROTOCOL_TYPE_IPV6)):
 
-            # Get TCP header
-            tcp_header = unpack('!HHLLBBHHH', packet[54:74])
+            # Get IP header, ignoring src address and dest address
+            ip_header = unpack('!IHBB', packet[14:22])
 
-            # Get TCP flags
-            flags = int(tcp_header[5])
+            # Get transport type; we want TCP
+            transport_type = ip_header[2]
 
-            # TODO: GET ATTACKER IP ADDRESS
-            # source_address = packet[22:38]
-            # print("attacker", source_address)
+            # Check for TCP only
+            if (transport_type == IP_NEXT_HEADER_TCP):
 
-            # Get possible attacker MAC address
-            attacker_mac_address = get_attacker_mac_address(eth_header)
-            print("Receiving IPv6 packet from MAC address: {}".format(attacker_mac_address))
+                # Get TCP header
+                tcp_header = unpack('!HHLLBBHHH', packet[54:74])
 
-            # Get target port
-            target_port = int(tcp_header[1])
+                # Get TCP flags
+                flags = int(tcp_header[5])
 
-            # TCP Connect Attack and Half-opening handling
-            if (flags == FLAGS_SYN):
-                # Starts new thread that waits for ACK or RST
-                start_new_thread(threaded, (listen, attacker_mac_address, target_port,))
+                # Get possible attacker MAC address
+                attacker_mac_address = get_attacker_mac_address(eth_header)
+                print("Receiving IPv6 packet from MAC address: {}".format(attacker_mac_address))
 
-            # Stealth scan / TCP FIN handling
-            elif (flags == FLAGS_FIN):
-                print("!! RECEIVED STEALTH SCAN/TCP FIN FROM MAC ADDRESS {} on port {} !!".format(attacker_mac_address, target_port))
+                # Get target port
+                target_port = int(tcp_header[1])
 
-            # SYN/ACK attack handling
-            elif (flags == FLAGS_SYN_ACK):
-                print("!! RECEIVED SYN/ACK ATTACK FROM MAC ADDRESS {} on port {} !!".format(attacker_mac_address, target_port))
+                # TCP Connect Attack and Half-opening handling
+                if (flags == FLAGS_SYN):
+                    # Starts new thread that waits for ACK or RST
+                    start_new_thread(threaded, (listen, attacker_mac_address, target_port,))
+
+                # Stealth scan / TCP FIN handling
+                elif (flags == FLAGS_FIN):
+                    # Starts new thread that check if this is an attack
+                    start_new_thread(threaded, (listen, attacker_mac_address, target_port,))
+
+                    #print("!! RECEIVED STEALTH SCAN/TCP FIN FROM MAC ADDRESS {} on port {} !!".format(attacker_mac_address, target_port))
+
+                # SYN/ACK attack handling
+                elif (flags == FLAGS_SYN_ACK):
+                    # Starts new thread that check if this is an attack
+                    start_new_thread(threaded, (listen, attacker_mac_address, target_port,))
+
+                    #print("!! RECEIVED SYN/ACK ATTACK FROM MAC ADDRESS {} on port {} !!".format(attacker_mac_address, target_port))
 
 def threaded(listen, src_address, target_port):
     """
@@ -79,13 +106,15 @@ def threaded(listen, src_address, target_port):
     """
     print("Started thread...")
 
+    store_list = []
+
     # Timeout 10 sec? 60 sec?
-    wait_until = datetime.now() + timedelta(seconds=10)
+    wait_until = datetime.now() + timedelta(seconds=WAIT_TIMEOUT_SEC)
     break_loop = False
     while not break_loop:
         # We should put this packet receiving code inside a single function for reusability
         # Receive packet
-        raw_packet = listen.recvfrom(65565)
+        raw_packet = listen.recvfrom(128)
         packet = raw_packet[0]
 
         # Get ethernet header
@@ -98,31 +127,57 @@ def threaded(listen, src_address, target_port):
         if (protocol_type == int(PROTOCOL_TYPE_IPV6)):
             print("Received IPv6 packet inside thread.")
 
-            # Get TCP header
-            tcp_header = unpack('!HHLLBBHHH', packet[54:74])
+            # Get IP header, ignoring src address and dest address
+            ip_header = unpack('!IHBB', packet[14:22])
 
-            # Get TCP flags
-            flags = int(tcp_header[5])
+            # Get transport type; we want TCP
+            transport_type = ip_header[2]
 
-            # TODO: GET ATTACKER IP ADDRESS
+            # Check for TCP only
+            if (transport_type == IP_NEXT_HEADER_TCP):
 
-            # Get attacker MAC address
-            attacker_mac_address = get_attacker_mac_address(eth_header)
+                # Get TCP header
+                tcp_header = unpack('!HHLLBBHHH', packet[54:74])
 
-            # Get port number
-            port = int(tcp_header[1])
+                # Get TCP flags
+                flags = int(tcp_header[5])
 
-            # Checking types of attack 
-            if (attacker_mac_address == src_address and port == target_port):
-                if(flags == FLAGS_ACK):
-                    print("!! RECEIVED A TCP CONNECT ATTACK FROM MAC ADDRESS {} on port {} !!".format(attacker_mac_address, target_port))
-                    break
-                elif(flags == FLAGS_RST):
-                    print("!! RECEIVED A TCP HALF OPENING ATTACK FROM MAC ADDRESS {} on port {} !!".format(attacker_mac_address, target_port))
-                    break
+                # Get attacker MAC address
+                attacker_mac_address = get_attacker_mac_address(eth_header)
+
+                # Get port number
+                port = int(tcp_header[1])
+
+                # We need the same src address and target port that received a SYN
+                # This is for the tcp connect and tcp half opening cases
+                if (attacker_mac_address == src_address and port == target_port):
+                    
+                    # Checking types of attack; i.e. tcp connect and half opening
+                    #if(flags == FLAGS_ACK):
+
+                    # Fuck this shit
+                    store_list.append(Store(attacker_mac_address, port, flags))
+
+                        #print("!! RECEIVED A TCP CONNECT ATTACK FROM MAC ADDRESS {} on port {} !!".format(attacker_mac_address, target_port))
+                    #elif(flags == FLAGS_RST):
+
+                        # Fuck this shit
+                        #store_list.append(Store(attacker_mac_address, port, flags))
+
+                        #print("!! RECEIVED A TCP HALF OPENING ATTACK FROM MAC ADDRESS {} on port {} !!".format(attacker_mac_address, target_port))
         
-        # Timeout stop condition
+        # Timeout stop condition; check if attack happened and if it did, which type
         if wait_until < datetime.now():
+            
+            # This creates a dict with the <key> as the port number and <value> as the number of its occurrences in a list
+            #counter_elements = [[x,store_list.port.count(x)] for x in set(store_list.port)]
+            
+            threshold = 3
+
+            for key, value in counter_elements.items(): 
+                if(value >= threshold):
+                    print("attack happened"):
+
             break_loop = True
 
     print("Exiting thread...")
