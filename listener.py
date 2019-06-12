@@ -1,4 +1,4 @@
-import socket, sys
+import socket, sys, random, string
 from struct import *
 from _thread import *
 import threading
@@ -22,13 +22,16 @@ FLAGS_RST = 4
 FLAGS_ACK = 16
 
 # Window configuration
-WND_RESOLUTION = "800x600"
+WND_RESOLUTION = "1280x680"
 WND_TITLE      = "ListenerV6"
 
 SHUTDOWN = False
 
 PACKET_QUEUE = []
 IPV6_LIST_IN = []
+
+# Debug flags
+DEBUG_RANDOM_IPS = 1
 
 # Packet example:
 # 00 a41f72f59050                          DMAC
@@ -57,7 +60,8 @@ class packetStorage:
         Stores several information about an ip packet
         """
         self.packet = packet
-        self.timestamp = time
+        # Stores datetime object
+        self.time = time
         self.avginterval = 0
         self.smac = self.packet[ 0: 6].hex()
         self.dmac = self.packet[ 6:12].hex()
@@ -69,9 +73,11 @@ class packetStorage:
         self.dport = []
         self.dport.append(self.packet[56:58].hex())
 
-        self.frm_line = tk.Frame(display, width = 539, height = 20, bg = 'white smoke')
-        #"fe80::0000:0000:0000:a61f"
-        self.lbl_ip = tk.Label(self.frm_line, width = 32, text = self.formatIpString(self.sip), bg = 'white smoke')
+        if DEBUG_RANDOM_IPS: self.sip  = self.randomString(len(self.sip))
+
+        self.frm_line = tk.Frame(display, width = 1280-476, height = 20, bg = 'white smoke')
+        #"fe80::0000:0000:0000:a61f:a61f:a61f"
+        self.lbl_ip = tk.Label(self.frm_line, width = 35, text = self.formatIpString(self.sip), bg = 'white smoke')
         self.var_dport_len = tk.IntVar()
         self.var_dport_len.set(len(self.dport))
         self.lbl_dport_len = tk.Label(self.frm_line, width = 5, textvariable = self.var_dport_len, bg = 'gainsboro')
@@ -89,15 +95,25 @@ class packetStorage:
         self.var_fin_len = tk.IntVar()
         self.var_fin_len.set(0)
         self.lbl_fin_count = tk.Label(self.frm_line, width = 5, textvariable = self.var_fin_len, bg = 'gainsboro')
+        # Displays the time that the packet was processed
+        self.var_timestamp = tk.StringVar()
+        self.var_timestamp.set(str(time).split(' ',1)[1])
+        self.lbl_timestamp = tk.Label(self.frm_line, width = 16, textvariable = self.var_timestamp, bg = 'white smoke')
+        # Displays the average time interval between each packet sent
+        self.var_avg_interval = tk.StringVar()
+        self.var_avg_interval.set("0.0")
+        self.lbl_avg_intervarl= tk.Label(self.frm_line, width = 21, textvariable = self.var_avg_interval, bg = 'gainsboro')
 
-        self.frm_line.place(x = 0, y = 0)
-        self.lbl_ip.place(x = 5, y = 0)
-        self.lbl_dport_len.place(x = 265, y = 0)
-        self.lbl_syn_count.place(x = 306, y  = 0)
-        self.lbl_ack_count.place(x = 347, y  = 0)
-        self.lbl_rst_count.place(x = 388, y  = 0)
-        self.lbl_fin_count.place(x = 429, y  = 0)
-#
+        self.frm_line.place(     x = 0,        y = 0)
+        self.lbl_ip.place(       x = 5,        y = 0)
+        self.lbl_dport_len.place(x = 289,      y = 0)
+        self.lbl_syn_count.place(x = 289+44,   y = 0)
+        self.lbl_ack_count.place(x = 289+44*2, y = 0)
+        self.lbl_rst_count.place(x = 289+44*3, y = 0)
+        self.lbl_fin_count.place(x = 289+44*4, y = 0)
+        self.lbl_timestamp.place(x = 289+44*5, y = 0)
+        self.lbl_avg_intervarl.place( x = 642, y = 0)
+
         self.updateFlags(packet[66:68].hex())
 
 
@@ -107,7 +123,6 @@ class packetStorage:
 
 
     def updateFlags(self, flags):
-        print(flags)
         if int(flags)&FLAGS_SYN:
             self.var_syn_len.set(self.var_syn_len.get()+1)
         if int(flags)&FLAGS_ACK:
@@ -116,6 +131,40 @@ class packetStorage:
             self.var_rst_len.set(self.var_rst_len.get()+1)
         if int(flags)&FLAGS_FIN:
             self.var_fin_len.set(self.var_fin_len.get()+1)
+
+
+    def updateTimestamp(self, time):
+        """
+        Updates time related values when a packet is received
+        """
+        # Calculates old timestamp in seconds
+        old_time  = self.time.microsecond / 1000000000
+        old_time += self.time.second
+        old_time += self.time.minute * 60
+        old_time += self.time.hour * 360
+        # Calculates new timestamp in seconds
+        new_time  = time.microsecond / 1000000000
+        new_time += time.second
+        new_time += time.minute * 60
+        new_time += time.hour * 360
+        # Calculates the difference between old timestamp and new timestamp
+        new_dif_time = new_time - old_time
+        # Initial value check
+        if self.var_avg_interval.get() == "0.0":
+            out = "{0:.9f}".format(new_dif_time)
+            self.var_avg_interval.set(out)
+        else:
+            new_avg_time = (new_dif_time + float(self.var_avg_interval.get()) / 2)
+            out = "{0:.9f}".format(new_avg_time)
+            self.var_avg_interval.set(out)
+        # Update old timestamp
+        self.time = time
+
+
+    def randomString(self, stringLength):
+        """Generate a random string of fixed length """
+        letters = string.ascii_lowercase
+        return ''.join(random.choice(letters) for i in range(stringLength))
 
 
     def formatIpString(self, ip):
@@ -170,25 +219,30 @@ class listenerWindow:
         # Main frame, parent of all widgets
         self.frmMain = tk.Frame(master, width = self.w, height = self.h, bg = 'white')
         # Meaning of each field on the window connections display
-        subtitles  = "Port                   \n"
-        subtitles += "                    IPv6                    range   #SYN   #ACK   #RST   #FIN                     "
-        self.lbl_subtitles = tk.Label(self.frmMain, text = subtitles, bg = 'white', font = ('helvetica', 10) )
+        #subtitles  ="                                    Port                              Last             Average        \n"
+        #subtitles +="                 IPv6               range #SYN  #ACK #RST  #FIN     Timestamp          interval        "
+        subtitles  ="                                    Port                              Last        Average interval     \n"
+        subtitles +="                 IPv6               range #SYN  #ACK #RST  #FIN     Timestamp     between  packets     "
+        self.lbl_subtitles = tk.Label(self.frmMain, width = 100, text = subtitles, bg = 'white', anchor = tk.W, justify = tk.LEFT, highlightthickness = 3, highlightbackground = 'silver' )
         # Display frame, where informations about connections are displayed
-        self.frm_display = tk.Frame(self.frmMain, width = (self.w-260), height = (self.h-60), bg = 'white smoke', highlightthickness = 2, highlightbackground = 'silver')
+        self.frm_display = tk.Frame(self.frmMain, width = (self.w-470), height = (self.h-60), bg = 'white smoke', highlightthickness = 3, highlightbackground = 'silver')
         # Button to exit the software
         self.btnCloseApp = tk.Button(self.frmMain, text="Exit", command = self.quitListener, height = 2, width = 6, bg = 'white', activebackground = 'white smoke' )
         # Placement of widgets
         self.frmMain.place(x = 0, y = 0)
-        self.lbl_subtitles.place( x = 250, y = 10)
-        self.frm_display.place( x = 250, y = 50 )
-        self.btnCloseApp.place(x = 10, y = (self.h-50))
+        self.lbl_subtitles.place( x = 10, y = 10)
+        self.frm_display.place( x = 10, y = 50 )
+        self.btnCloseApp.place(x = 1195, y = (self.h-55))
 
 
     def updateLabelGrid(self):
+        """
+        Updates the placement of lines on the connections display
+        """
         aux = 0;
         for pckt in IPV6_LIST_IN:
-            #pckt.frm_line.pack_forget()
-            #pckt.frm_line.place(x = 0, y = (0 + 5*aux))
+            pckt.frm_line.pack_forget()
+            pckt.frm_line.place(x = 0, y = (0 + 20*aux))
             aux += 1
 
 
@@ -205,21 +259,35 @@ class listenerWindow:
 
 
     def handlePacketQueue(self, *args):
+        """
+        Callback for the new packet flag. Process packets on queue
+        """
         if self.var_new_packet.get():
             while len(PACKET_QUEUE) > 0:
+                # Selects a packet to proccess and removes it from the list
                 packet = PACKET_QUEUE.pop()
+                time = datetime.now()
+                # If there no objects on list, immediately creates ones
                 if IPV6_LIST_IN == []:
-                    IPV6_LIST_IN.append(packetStorage(packet, datetime.now(), self.frm_display))
+                    IPV6_LIST_IN.append(packetStorage(packet, time, self.frm_display))
                 else:
                     for p in IPV6_LIST_IN:
+                        # If a packet of this source is not present on the list, create a storage object for it
                         if not p.checkIfIpStored(packet):
-                            IPV6_LIST_IN.append(packetStorage(packet, datetime.now(), self.frm_display))
+                            IPV6_LIST_IN.append(packetStorage(packet, time, self.frm_display))
+                            break# DOUBLE TEST THIS BREAK
+                        # If source already has a storage object and this port was not previously used, add port
+                        #to list and update flags/timestamp
                         elif not p.checkIfPortStored(packet):
                             p.addPort((packet[56:58].hex()))
                             p.updateFlags(packet[66:68].hex())
+                            p.updateTimestamp(time)
                             break
+                        # In most cases, repeated packets will end up here. Update flags/timestamp
                         else:
                             p.updateFlags(packet[66:68].hex())
+                            p.updateTimestamp(time)
+                self.updateLabelGrid()
 
             self.var_new_packet.set(False)
 
@@ -251,40 +319,10 @@ class listenerWindow:
             #self.var_new_packet.set(False)
             # Check if TCP IPv6
             if (protocol_type == int(PROTOCOL_TYPE_IPV6) and next_header == "06"):
-
-                #b'\xfe\x80\x00\x00\x00\x00\x00\x00\x19\xf3\x0e9P\x86\x97\xdd'
-
-                #a = packet[54:74]
-                #print("b'\x04\xd2\x00(\x00\x00\x00\x00\x00\x00\x00\x00P\x01\xd0\x16\xbc\xb1\x00\x00'")
-                print(packet[22:38])
-
                 # Add packet to queue
                 PACKET_QUEUE.append(packet)
                 self.var_new_packet.set(True)
 
-                #print(self.var_new_packet.get())
-
-                # Get TCP header
-                tcp_header = unpack('!HHLLBBHHH', packet[54:74])
-                # Get TCP flags
-                flags = int(tcp_header[5])
-                # Get source IPv6 address and store in list
-                source_address = packet[22:38].hex()
-
-                # Source address to string
-                sa = (source_address[ 0: 4]+"::"+
-                      source_address[ 4: 8]+":" +
-                      source_address[ 8:12]+":" +
-                      source_address[12:16]+":" +
-                      source_address[16:20]+":" +
-                      source_address[24:28]+":" +
-                      source_address[28:32])
-                # Get source MAC address
-                source_mac = get_source_mac(eth_header)
-                #print("TCP IPv6 packet from IP, MAC: {} {}".format(sa,source_mac))
-
-                # Get target port
-                target_port = int(tcp_header[1])
 
 def threaded(listen, src_address, target_port):
     """
@@ -443,6 +481,7 @@ def lisssstener(wnd):
 
 if __name__ == "__main__":
     root = tk.Tk()
+    root.option_add("*Font", "courier 10")
     window = listenerWindow(root)
     window.listernerThread.start()
     root.mainloop()
