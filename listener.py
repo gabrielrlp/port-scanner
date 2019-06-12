@@ -22,10 +22,10 @@ class Listener:
         self.args = args
         self.suspect_table = []
         self.flags_dict = {
-            1 : 'FIN',
-            2 : 'SYN',
-            4 : 'RST',
-            16: 'ACK',
+            1 : 'TCP FIN',
+            2 : 'TCP Connect or TCP Half-Opening (SYN)',
+            4 : 'TCP Half-Opening',
+            16: 'TCP Connect',
             18: 'SYN/ACK'
         }
         self.prot_type_ipv6 = 0x86dd
@@ -71,7 +71,7 @@ class Listener:
 
                     # Get possible suspect MAC address
                     suspect_mac_address = ':'.join(format(a, '02x') for a in eth_header[6:12])
-                    suspect_ip_address = socket.inet_ntop(socket.AF_INET6, raw_packet[22:38])                    
+                    suspect_ip_address = socket.inet_ntop(socket.AF_INET6, raw_packet[22:38])
 
                     if suspect_mac_address != args.smac:
                         # Get target port
@@ -84,12 +84,12 @@ class Listener:
                                 break
                         else:
                             s = Suspect(ip_address=suspect_ip_address,
-                                        mac_address=suspect_mac_address, 
+                                        mac_address=suspect_mac_address,
                                         port=target_port,
-                                        flags=flags, 
+                                        flags=flags,
                                         timestamp=time.time())
                             self.suspect_table.append(s)
-            self.mutex.release()    
+            self.mutex.release() 
 
     def suspect_monitor(self, args):
         """
@@ -97,7 +97,7 @@ class Listener:
         """
         while True:
             self.mutex.acquire()
-            # iterate through table 
+            # iterate through table
             # checks every 5 seconds
             if len(self.suspect_table) > 0:
                 # para cada porta
@@ -105,18 +105,31 @@ class Listener:
                     if len(s.ports) > 0:
                         times = [p.timestamp for p in s.ports]
                         flags = [p.state for p in s.ports]
-                        if len(times) > args.suspect_threshold and np.std(times) < args.std:
-                            mode_flag = mode(flags)
+                        if len(times) >= args.suspect_threshold and np.std(times) < args.std:
                             print(bcolors.WARNING + '[WARNING]' + bcolors.ENDC + ' Possible network attack detected')
                             print('[INFO] Suspect IPv6 address: {}'.format(s.ip_address))
                             print('[INFO] Suspect MAC address: {}'.format(s.mac_address))
-                            print('[INFO] Possible attack: {}'.format(self.flags_dict[mode_flag[0][0]]))
+                            print('[INFO] Possible attack: {}'.format(self.check_attack_probability(flags)))
                             # Reset suspect ports
-                            s.ports = []
             # Mutex release
+            self.suspect_table = []
             self.mutex.release()
             time.sleep(1)
-        
+
+    def check_attack_probability(self, flags):
+        flags_mode = mode(flags)
+        # SYN
+        possible_attack = flags_mode[0][0]
+        if possible_attack == 2:
+            if 16 in flags:
+                # TCP-Connect
+                possible_attack = 16 #self.flags_dict[16]
+            elif 4 in flags:
+                # TCP-Half-Opening
+                possible_attack = 4 #self.flags_dict[4]
+
+        return self.flags_dict[possible_attack]
+
 if __name__ == "__main__":
     args = parser.parse_args()
 
