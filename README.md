@@ -13,7 +13,7 @@
 - An FIN message is sent to a port
 - If the port is close, an RST will be received; else the port is open
 ### SYN/ACK
-- An SYN message is sent to a port
+- An SYN/ACK message is sent to a port
 - If the port is open, an RST will be received; else the port is close
 
 ## Arguments
