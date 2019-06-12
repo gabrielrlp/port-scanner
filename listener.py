@@ -70,7 +70,8 @@ class packetStorage:
         self.dport.append(self.packet[56:58].hex())
 
         self.frm_line = tk.Frame(display, width = 539, height = 20, bg = 'white smoke')
-        self.lbl_ip = tk.Label(self.frm_line, width = 22, text = "fe80::0000:0000:0000:a61f", bg = 'white smoke')
+        #"fe80::0000:0000:0000:a61f"
+        self.lbl_ip = tk.Label(self.frm_line, width = 32, text = self.formatIpString(self.sip), bg = 'white smoke')
         self.var_dport_len = tk.IntVar()
         self.var_dport_len.set(len(self.dport))
         self.lbl_dport_len = tk.Label(self.frm_line, width = 5, textvariable = self.var_dport_len, bg = 'gainsboro')
@@ -90,14 +91,15 @@ class packetStorage:
         self.lbl_fin_count = tk.Label(self.frm_line, width = 5, textvariable = self.var_fin_len, bg = 'gainsboro')
 
         self.frm_line.place(x = 0, y = 0)
-        self.lbl_ip.place(x = 0, y = 0)
-        self.lbl_dport_len.place(x = 182, y = 0)
-        self.lbl_syn_count.place(x = 225, y  = 0)
-        self.lbl_ack_count.place(x = 272, y  = 0)
-        self.lbl_rst_count.place(x = 319, y  = 0)
-        self.lbl_fin_count.place(x = 364, y  = 0)
-
+        self.lbl_ip.place(x = 5, y = 0)
+        self.lbl_dport_len.place(x = 265, y = 0)
+        self.lbl_syn_count.place(x = 306, y  = 0)
+        self.lbl_ack_count.place(x = 347, y  = 0)
+        self.lbl_rst_count.place(x = 388, y  = 0)
+        self.lbl_fin_count.place(x = 429, y  = 0)
+#
         self.updateFlags(packet[66:68].hex())
+
 
     def addPort(self, port):
         self.dport.append(port)
@@ -116,6 +118,16 @@ class packetStorage:
             self.var_fin_len.set(self.var_fin_len.get()+1)
 
 
+    def formatIpString(self, ip):
+        sa = (ip[ 0: 4]+"::"+
+              ip[ 4: 8]+":" +
+              ip[ 8:12]+":" +
+              ip[12:16]+":" +
+              ip[16:20]+":" +
+              ip[24:28]+":" +
+              ip[28:32])
+        return sa
+
 
     # Checks if IP is already stored, returns true if it is
     def checkIfIpStored(self, packet):
@@ -126,6 +138,7 @@ class packetStorage:
         elif self.sip == packet[22:38].hex():
             return True
         return False
+
 
 
     # Checks if dport was already used by given ip packet
@@ -190,6 +203,7 @@ class listenerWindow:
         self.master.quit()
 
 
+
     def handlePacketQueue(self, *args):
         if self.var_new_packet.get():
             while len(PACKET_QUEUE) > 0:
@@ -237,6 +251,12 @@ class listenerWindow:
             #self.var_new_packet.set(False)
             # Check if TCP IPv6
             if (protocol_type == int(PROTOCOL_TYPE_IPV6) and next_header == "06"):
+
+                #b'\xfe\x80\x00\x00\x00\x00\x00\x00\x19\xf3\x0e9P\x86\x97\xdd'
+
+                #a = packet[54:74]
+                #print("b'\x04\xd2\x00(\x00\x00\x00\x00\x00\x00\x00\x00P\x01\xd0\x16\xbc\xb1\x00\x00'")
+                print(packet[22:38])
 
                 # Add packet to queue
                 PACKET_QUEUE.append(packet)
