@@ -1,208 +1,124 @@
-import argparse
-import socket, time
+import argparse, socket, time, threading
+import numpy as np
+
 from struct import *
 from _thread import *
-import threading
 from threading import Lock
-from datetime import timedelta
-import datetime
-import numpy as np
+from suspect import Suspect
+from utils import bcolors
+
+from scipy.stats import mode
 
 # Arguments Parsing Settings
 parser = argparse.ArgumentParser()
 
 # Main arguments for configuration
 parser.add_argument('--smac', help="the source MAC address (aa:bb:cc:dd:ee:ff)", required=True)
-parser.add_argument('--var', type=float, help='...', default=1.0)
-parser.add_argument('--monitor-sleep', '--ms', type=int, help='...', default=1)
+parser.add_argument('--std', type=float, help='...', default=10.0)
+parser.add_argument('--suspect-threshold', '--st', type=int, help='...', default=5)
 
-# test
-table_store = []
+class Listener:
+    def __init__(self, args):
+        self.args = args
+        self.suspect_table = []
+        self.flags_dict = {
+            1 : 'FIN',
+            2 : 'SYN',
+            4 : 'RST',
+            16: 'ACK',
+            18: 'SYN/ACK'
+        }
+        self.prot_type_ipv6 = 0x86dd
+        self.ip_next_header_tcp = 6
+        self.mutex = Lock()
 
-class Port:
-    def __init__(self, port, flags, time):
-        self.port = port
-        self.access_time = time
-        self.state = flags
-        self.update_state(flags)
-    def update_state(self, flags):
-        self.state = flags
+    def listen(self):
+        # Creates raw socket
+        listen = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(3))
 
-class Store:
-    def __init__(self, address, port, flags, timestamp):
-        self.attacker_address = address
-        p = Port(port, flags, timestamp)
-        self.ports = []
-        self.ports.append(p)
-        self.port_updated = False
+        print("Starting Listener...")
 
-    def update_ports(self, port, flags, timestamp):
-        # testar se a porta ja existe
-        for p in self.ports:
-            #print("port: ", p.port, " state: ", p.state, "time: ", p.access_time)
-            # se existir, atualizar com o ultimo timestamp
-            if p.port == port:
-                p.access_time = timestamp
-                p.update_state(flags)
-                self.port_updated = True
-                break
-        if self.port_updated == False:
-            # se nao existir, criar uma nova
-            p = Port(port, flags, timestamp)
-            self.ports.append(p)
-        self.port_updated = False
+        # Starts parallel thread to check the storage table every X seconds
+        start_new_thread(self.suspect_monitor,(args,))
 
-# IPv6 type from ethernet header
-PROTOCOL_TYPE_IPV6 = 0x86dd
+        while True:
+            # Receive packet
+            raw_packet = listen.recv(128)
 
-## This is for the TCP flags statements
-# 000010
-FLAGS_SYN = 2
-# 010010 
-FLAGS_SYN_ACK = 18
-# 000001
-FLAGS_FIN = 1
-# 000100
-FLAGS_RST = 4
-# 010000
-FLAGS_ACK = 16
+            self.mutex.acquire()
 
-# IPv6 next header for TCP
-IP_NEXT_HEADER_TCP = 6
+            # Get ethernet header
+            eth_header = raw_packet[0:14]
 
+            # Get protocol type; 0x86dd for IPv6
+            protocol_type = unpack('!6B6BH', eth_header)[12]
 
-def listener(args):
-    global table_store
-    """
-    This listener represents the main attack detection component.
-    """
-    # Creates raw socket
-    listen = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(3))
+            # Check for IPv6 only
+            if (protocol_type == int(self.prot_type_ipv6)):
+                # Get IP header, ignoring src address and dest address
+                ip_header = unpack('!IHBB', raw_packet[14:22])
 
-    print("Starting Listener...")
+                # Get transport type; we want TCP
+                transport_type = ip_header[2]
 
-    # Starts parallel thread to check the storage table every X seconds
-    start_new_thread(checker_thread,(args,))
+                # Check for TCP only
+                if (transport_type == self.ip_next_header_tcp):
+                    # Get TCP header
+                    tcp_header = unpack('!HHLLBBHHH', raw_packet[54:74])
 
-    while True:
-        # We should put this packet receiving code inside a single function for reusability
-        # Receive packet
-        raw_packet = listen.recvfrom(128)
-        packet = raw_packet[0]
+                    # Get TCP flags
+                    flags = int(tcp_header[5])
 
-        # Get ethernet header
-        eth_header = packet[0:14]
+                    # Get possible suspect MAC address
+                    suspect_mac_address = ':'.join(format(a, '02x') for a in eth_header[6:12])
+                    suspect_ip_address = socket.inet_ntop(socket.AF_INET6, raw_packet[22:38])                    
 
-        # Get protocol type; 0x86dd for IPv6
-        protocol_type = unpack('!6B6BH', eth_header)[12]
+                    if suspect_mac_address != args.smac:
+                        # Get target port
+                        target_port = int(tcp_header[1])
 
-        # Check for IPv6 only
-        if (protocol_type == int(PROTOCOL_TYPE_IPV6)):
-            # Get IP header, ignoring src address and dest address
-            ip_header = unpack('!IHBB', packet[14:22])
+                        # ARMAZENA NA TABELA
+                        for s in self.suspect_table:
+                            if suspect_mac_address == s.mac_address:
+                                s.update_ports(target_port, flags, time.time())
+                                break
+                        else:
+                            s = Suspect(ip_address=suspect_ip_address,
+                                        mac_address=suspect_mac_address, 
+                                        port=target_port,
+                                        flags=flags, 
+                                        timestamp=time.time())
+                            self.suspect_table.append(s)
+            self.mutex.release()    
 
-            # Get transport type; we want TCP
-            transport_type = ip_header[2]
-
-            # Check for TCP only
-            if (transport_type == IP_NEXT_HEADER_TCP):
-                # Get TCP header
-                tcp_header = unpack('!HHLLBBHHH', packet[54:74])
-
-                # Get TCP flags
-                flags = int(tcp_header[5])
-
-                # Get possible attacker MAC address
-                attacker_mac_address = get_attacker_mac_address(eth_header)
-                #print("-----------------------------------------------")
-                #print("Receiving IPv6 packet from MAC address: {}".format(attacker_mac_address))
-                if attacker_mac_address != args.smac:
-                    # Get target port
-                    target_port = int(tcp_header[1])
-
-                    ip_exists = False
-                    # ARMAZENA NA TABELA
-                    for item in table_store:
-                        print(attacker_mac_address, item.attacker_address)
-                        if attacker_mac_address == item.attacker_address:
-                            item.update_ports(target_port, flags, datetime.datetime.now().time())
-                            ip_exists = True
-                            break
-                    if ip_exists == False:
-                        s = Store(attacker_mac_address, target_port, flags, datetime.datetime.now().time())
-                        table_store.append(s)
-
-                for s in table_store:
-                    #print('store: {}'.format(s.attacker_address))
-                    for p in s.ports:
-                        #print('port: {}'.format(p.port))
-                        pass
-
-                            # # TCP Connect Attack and Half-opening handling
-                            # if (flags == FLAGS_SYN):
-                            #     # Starts new thread that waits for ACK or RST
-                            #     start_new_thread(threaded, (listen, attacker_mac_address, target_port,))
-
-                            # # Stealth scan / TCP FIN handling
-                            # elif (flags == FLAGS_FIN):
-                            #     # Starts new thread that check if this is an attack
-                            #     start_new_thread(threaded, (listen, attacker_mac_address, target_port,))
-
-                            #     #print("!! RECEIVED STEALTH SCAN/TCP FIN FROM MAC ADDRESS {} on port {} !!".format(attacker_mac_address, target_port))
-
-                            # # SYN/ACK attack handling
-                            # elif (flags == FLAGS_SYN_ACK):
-                            #     # Starts new thread that check if this is an attack
-                            #     start_new_thread(threaded, (listen, attacker_mac_address, target_port,))
-
-                            #     #print("!! RECEIVED SYN/ACK ATTACK FROM MAC ADDRESS {} on port {} !!".format(attacker_mac_address, target_port))
-
-def checker_thread(args):
-    """
-    Thread that waits for either TCP Connect Attack or TCP Half-opening Attack
-    """
-    global table_store
-    while True:
-        print('--')
-        # iterate through table 
-        # checks every 5 seconds
-        if len(table_store) > 0:
-            # para cada porta
-            for s in table_store:
-                times = []
-                for p in s.ports:
-                    # parser do time
-                    seconds = float(str(p.access_time).split(':')[2])
-                    times.append(seconds)
-                if len(times) > 0 and np.var(times) < args.var:
-                    print('attack!!!')
-                    # check state
-        table_store = []
-        time.sleep(args.monitor_sleep)
-
-def get_attacker_mac_address(eth_header):
-    """
-    Helper function to get a readable 'src mac address' from bytes
-    """
-
-    # Unpack
-    unpacked_eth_header = unpack('!6B6BH', eth_header)
-
-    # Get attacker MAC address
-    raw_attacker_mac_address = unpacked_eth_header[6:12]
-
-    # Stringfy mac address
-    attacker_mac_address = ""
-    for m in raw_attacker_mac_address:
-        attacker_mac_address = attacker_mac_address + format(m, '02x') + ":"
-
-    # Remove last ':'
-    attacker_mac_address = attacker_mac_address[:-1]
-
-    return attacker_mac_address
-
-
+    def suspect_monitor(self, args):
+        """
+        Thread that waits for either TCP Connect Attack or TCP Half-opening Attack
+        """
+        while True:
+            self.mutex.acquire()
+            # iterate through table 
+            # checks every 5 seconds
+            if len(self.suspect_table) > 0:
+                # para cada porta
+                for s in self.suspect_table:
+                    if len(s.ports) > 0:
+                        times = [p.timestamp for p in s.ports]
+                        flags = [p.state for p in s.ports]
+                        if len(times) > args.suspect_threshold and np.std(times) < args.std:
+                            mode_flag = mode(flags)
+                            print(bcolors.WARNING + '[WARNING]' + bcolors.ENDC + ' Possible network attack detected')
+                            print('[INFO] Suspect IPv6 address: {}'.format(s.ip_address))
+                            print('[INFO] Suspect MAC address: {}'.format(s.mac_address))
+                            print('[INFO] Possible attack: {}'.format(self.flags_dict[mode_flag[0][0]]))
+                            # Reset suspect ports
+                            s.ports = []
+            # Mutex release
+            self.mutex.release()
+            time.sleep(1)
         
 if __name__ == "__main__":
     args = parser.parse_args()
-    listener(args)
+
+    l = Listener(args=args)
+    l.listen()
