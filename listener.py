@@ -6,7 +6,7 @@ from datetime import timedelta
 from datetime import datetime
 import tkinter as tk
 
-# IPv6 type from ethernet header
+## IPv6 type from ethernet header
 PROTOCOL_TYPE_IPV6 = 0x86dd
 
 ## This is for the TCP flags statements
@@ -21,40 +21,35 @@ FLAGS_RST = 4
 # 010000
 FLAGS_ACK = 16
 
+## Limits and tresholds
+# Number of different ports that have to be scanned to be cosireder harmfull
+DPORT_LIMIT = 5
+SPORT_LIMIT = 5
+# Socket stream interval threshold for fast stream warning
+STREAM_INTERVAL_LIMIT = 0.01
+# Show warning after this number of repeated flags
+SYN_LIMIT   = 5
+FIN_LIMIT   = 5
+ACK_LIMIT   = 5
+RST_LIMIT   = 5
+# After this period(seconds), warning flags will be reseted
+FLAG_TIMEOUT= 10
+
+## General
 # Window configuration
 WND_RESOLUTION = "1280x680"
 WND_TITLE      = "ListenerV6"
-
+# If raised, will shut down everything
 SHUTDOWN = False
-
+# Stores packets to be processed
 PACKET_QUEUE = []
+# List of objects that represents received IPv6 TCP packets
 IPV6_LIST_IN = []
-
 # Debug flags
-DEBUG_RANDOM_IPS = 1
-
-# Packet example:
-# 00 a41f72f59050                          DMAC
-# 06 a41f72f59050                          SMAC
-# 12 86dd                                  TYPE (IPV6)
-# 14 60                                    VERSION 6
-# 15 000001                                FLOW
-# 18 0014                                  PAYLOAD LENGHT
-# 20 06                                    NEXT HEADER
-# 21 ff                                    HOP
-# 22 fe80000000000000a61f72fffef59050      SIP
-# 38 fe80000000000000a61f72fffef59050      DIP
-# 54 04d2                                  SPORT
-# 56 0016                                  DPORT
-# 58 00000000                              SEQUENCE NUMBER
-# 62 00000000                              ACK NUMBER
-# 66 5001                                  HLEN / FLAGS
-# 68 d016                                  WINDOW VALUE
-# 70 8d18                                  CHEKSUM
-# 72 0000                                  URGENT POINTER
+DEBUG_RANDOM_IPS = 0
 
 
-class packetStorage:
+class packet_storage:
     def __init__(self, packet, time, display):
         """
         Stores several information about an ip packet
@@ -68,15 +63,26 @@ class packetStorage:
         self.sip  = self.packet[22:38].hex()
         self.dip  = self.packet[38:54].hex()
 
+        # List of ports that this ip came from
         self.sport = []
         self.sport.append(self.packet[54:56].hex())
+        # List of ports targeted by this ip
         self.dport = []
         self.dport.append(self.packet[56:58].hex())
 
+        self.lockWarningFlags = False
+        self.showDPortWarning = True
+        self.showSYNWarning = True
+        self.showFINWarning = True
+        self.showACKWarning = True
+        self.showRSTWarning = True
+        self.showStreamWarning = True
+        self.showSPortWarning = True
+
+        # Fast test for multiple display lines
         if DEBUG_RANDOM_IPS: self.sip  = self.randomString(len(self.sip))
 
         self.frm_line = tk.Frame(display, width = 1280-476, height = 20, bg = 'white smoke')
-        #"fe80::0000:0000:0000:a61f:a61f:a61f"
         self.lbl_ip = tk.Label(self.frm_line, width = 35, text = self.formatIpString(self.sip), bg = 'white smoke')
         self.var_dport_len = tk.IntVar()
         self.var_dport_len.set(len(self.dport))
@@ -114,15 +120,22 @@ class packetStorage:
         self.lbl_timestamp.place(x = 289+44*5, y = 0)
         self.lbl_avg_intervarl.place( x = 642, y = 0)
 
-        self.updateFlags(packet[66:68].hex())
+        self.update_flags(packet[66:68].hex())
 
 
-    def addPort(self, port):
+    def add_port(self, port):
+        """
+        Add port to list
+        """
         self.dport.append(port)
         self.var_dport_len.set(len(self.dport))
 
 
-    def updateFlags(self, flags):
+    def update_flags(self, flags):
+        """
+        Updates flag counter and idle lock
+        """
+        self.lockWarningFlags = False
         if int(flags)&FLAGS_SYN:
             self.var_syn_len.set(self.var_syn_len.get()+1)
         if int(flags)&FLAGS_ACK:
@@ -133,7 +146,7 @@ class packetStorage:
             self.var_fin_len.set(self.var_fin_len.get()+1)
 
 
-    def updateTimestamp(self, time):
+    def update_timestamp(self, time):
         """
         Updates time related values when a packet is received
         """
@@ -162,12 +175,17 @@ class packetStorage:
 
 
     def randomString(self, stringLength):
-        """Generate a random string of fixed length """
+        """
+        Returns a random string of fixed length. Debug puposes
+        """
         letters = string.ascii_lowercase
         return ''.join(random.choice(letters) for i in range(stringLength))
 
 
     def formatIpString(self, ip):
+        """
+        Returns a formated IPv6 string from packet
+        """
         sa = (ip[ 0: 4]+"::"+
               ip[ 4: 8]+":" +
               ip[ 8:12]+":" +
@@ -179,7 +197,7 @@ class packetStorage:
 
 
     # Checks if IP is already stored, returns true if it is
-    def checkIfIpStored(self, packet):
+    def check_if_ip_stored(self, packet):
         global IPV6_LIST_IN
         # Check if ipv6 list is empty
         if IPV6_LIST_IN == []:
@@ -191,7 +209,7 @@ class packetStorage:
 
 
     # Checks if dport was already used by given ip packet
-    def checkIfPortStored(self, packet):
+    def check_if_port_stored(self, packet):
         global IPV6_LIST_IN
         for p in self.dport:
             if p == packet[56:58].hex():
@@ -199,7 +217,7 @@ class packetStorage:
         return False
 
 
-class listenerWindow:
+class listener_window:
     def __init__(self, master):
         """
         Defines the window and main functionalities of the software
@@ -208,34 +226,44 @@ class listenerWindow:
         # Flag for incoming packet
         self.var_new_packet = tk.BooleanVar()
         self.var_new_packet.set(False)
-        self.var_new_packet.trace('w', self.handlePacketQueue)
+        self.var_new_packet.trace('w', self.handle_packet_quere)
         # Basic window configuration
         self.master.title(WND_TITLE)
         self.master.geometry(WND_RESOLUTION)
         self.w, self.h = WND_RESOLUTION.split("x",1)
         self.w, self.h = int(self.w), int(self.h)
         # Thread that represents the listener
-        self.listernerThread = threading.Thread(target = self.listener)
+        self.listener_thread = threading.Thread(target = self.listener)
+        # Thread that represents the connection monitor
+        self.monitor_thread = threading.Thread(target = self.connection_monitor)
         # Main frame, parent of all widgets
-        self.frmMain = tk.Frame(master, width = self.w, height = self.h, bg = 'white')
+        self.frm_main = tk.Frame(master, width = self.w, height = self.h, bg = 'white')
         # Meaning of each field on the window connections display
-        #subtitles  ="                                    Port                              Last             Average        \n"
-        #subtitles +="                 IPv6               range #SYN  #ACK #RST  #FIN     Timestamp          interval        "
         subtitles  ="                                    Port                              Last        Average interval     \n"
         subtitles +="                 IPv6               range #SYN  #ACK #RST  #FIN     Timestamp     between  packets     "
-        self.lbl_subtitles = tk.Label(self.frmMain, width = 100, text = subtitles, bg = 'white', anchor = tk.W, justify = tk.LEFT, highlightthickness = 3, highlightbackground = 'silver' )
+        self.lbl_subtitles = tk.Label(self.frm_main, width = 100, text = subtitles, bg = 'white', anchor = tk.W, justify = tk.LEFT, highlightthickness = 3, highlightbackground = 'silver' )
         # Display frame, where informations about connections are displayed
-        self.frm_display = tk.Frame(self.frmMain, width = (self.w-470), height = (self.h-60), bg = 'white smoke', highlightthickness = 3, highlightbackground = 'silver')
+        self.frm_display = tk.Frame(self.frm_main, width = (self.w-470), height = (self.h-336), bg = 'white smoke', highlightthickness = 3, highlightbackground = 'silver')
+        # Frame where text warnings are displayed
+        self.frm_console = tk.Frame(self.frm_main, width = (self.w-470), height = (280), bg = 'white', highlightthickness = 3, highlightbackground = 'silver')
+        self.scr_console = tk.Scrollbar(self.frm_console)
+        self.txt_console = tk.Text(self.frm_console, width = 112, height = 19, font = ("courier", "9"))
         # Button to exit the software
-        self.btnCloseApp = tk.Button(self.frmMain, text="Exit", command = self.quitListener, height = 2, width = 6, bg = 'white', activebackground = 'white smoke' )
+        self.btn_close = tk.Button(self.frm_main, text="Exit", command = self.quit_listener, height = 2, width = 6, bg = 'white', activebackground = 'white smoke' )
         # Placement of widgets
-        self.frmMain.place(x = 0, y = 0)
+        self.frm_main.place(x = 0, y = 0)
         self.lbl_subtitles.place( x = 10, y = 10)
-        self.frm_display.place( x = 10, y = 50 )
-        self.btnCloseApp.place(x = 1195, y = (self.h-55))
+        self.frm_display.place( x = 10, y =  50 )
+        self.frm_console.place( x = 10, y = 392 )
+        #self.txt_console.place( x =  0, y =   0 )
+        self.txt_console.pack(side = tk.LEFT, fill = tk.Y)
+        self.scr_console.pack(side = tk.RIGHT, fill = tk.Y)
+        self.scr_console.config(command = self.txt_console.yview)
+        self.txt_console.config(yscrollcommand = self.scr_console.set)
+        self.btn_close.place(x = 1195, y = (self.h-55))
 
 
-    def updateLabelGrid(self):
+    def update_label_grid(self):
         """
         Updates the placement of lines on the connections display
         """
@@ -246,50 +274,57 @@ class listenerWindow:
             aux += 1
 
 
-    def quitListener(self):
+    def quit_listener(self):
         """
         Raise SHUTDOWN flag, close listener thread and shut down tkinter window.
         """
 
         global SHUTDOWN
         SHUTDOWN = 1
-        self.listernerThread.join()
+        self.listener_thread.join()
         self.master.quit()
 
 
 
-    def handlePacketQueue(self, *args):
+    def handle_packet_quere(self, *args):
         """
         Callback for the new packet flag. Process packets on queue
         """
+        global SHUTDOWN, IPV6_LIST_IN
         if self.var_new_packet.get():
             while len(PACKET_QUEUE) > 0:
                 # Selects a packet to proccess and removes it from the list
+                if SHUTDOWN:
+                    break
                 packet = PACKET_QUEUE.pop()
                 time = datetime.now()
                 # If there no objects on list, immediately creates ones
                 if IPV6_LIST_IN == []:
-                    IPV6_LIST_IN.append(packetStorage(packet, time, self.frm_display))
+                    IPV6_LIST_IN.append(packet_storage(packet, time, self.frm_display))
                 else:
                     for p in IPV6_LIST_IN:
                         # If a packet of this source is not present on the list, create a storage object for it
-                        if not p.checkIfIpStored(packet):
-                            IPV6_LIST_IN.append(packetStorage(packet, time, self.frm_display))
+                        if not p.check_if_ip_stored(packet):
+                            IPV6_LIST_IN.append(packet_storage(packet, time, self.frm_display))
                             break# DOUBLE TEST THIS BREAK
                         # If source already has a storage object and this port was not previously used, add port
                         #to list and update flags/timestamp
-                        elif not p.checkIfPortStored(packet):
-                            p.addPort((packet[56:58].hex()))
-                            p.updateFlags(packet[66:68].hex())
-                            p.updateTimestamp(time)
+                        elif not p.check_if_port_stored(packet):
+                            p.add_port((packet[56:58].hex()))
+                            p.update_flags(packet[66:68].hex())
+                            p.update_timestamp(time)
                             break
                         # In most cases, repeated packets will end up here. Update flags/timestamp
                         else:
-                            p.updateFlags(packet[66:68].hex())
-                            p.updateTimestamp(time)
-                self.updateLabelGrid()
+                            p.update_flags(packet[66:68].hex())
+                            p.update_timestamp(time)
+                self.update_label_grid()
 
             self.var_new_packet.set(False)
+
+
+    def echo(self, text):
+        self.txt_console.insert(tk.END, text)
 
 
     def listener(self):
@@ -301,10 +336,10 @@ class listenerWindow:
         # Creates raw socket
         listen = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(3))
 
+        self.monitor_thread.start()
+
         # Main loop
         while not SHUTDOWN:
-            # We should put this packet receiving code inside a single function for reusability
-
             # Receive packet
             raw_packet = listen.recvfrom(65565)
             packet = raw_packet[0]
@@ -323,166 +358,87 @@ class listenerWindow:
                 PACKET_QUEUE.append(packet)
                 self.var_new_packet.set(True)
 
+        self.monitor_thread.join()
 
-def threaded(listen, src_address, target_port):
-    """
-    Thread that waits for either TCP Connect Attack or TCP Half-opening Attack
-    """
-    print("Started thread...")
 
-    # Timeout 10 sec? 60 sec?
-    wait_until = datetime.now() + timedelta(seconds=10)
-    break_loop = False
-    while not break_loop:
-        # We should put this packet receiving code inside a single function for reusability
-        # Receive packet
-        raw_packet = listen.recvfrom(65565)
-        packet = raw_packet[0]
+    def connection_monitor(self):
+        """
+        Thread responsible for controlling warning flags and connection information
+        """
 
-        # Get ethernet header
-        eth_header = packet[0:14]
+        global SHUTDOWN, DPORT_LIMIT, STREAM_INTERVAL_LIMIT, IPV6_LIST_IN, FLAG_TIMEOUT
+        global SYN_LIMIT, ACK_LIMIT, FIN_LIMIT, RST_LIMIT, SPORT_LIMIT
 
-        # Get protocol type; 0x86dd for IPv6
-        protocol_type = unpack('!6B6BH', eth_header)[12]
+        while not SHUTDOWN:
+            # Calculates present time in seconds
+            time = datetime.now()
+            new_time  = time.microsecond / 1000000000
+            new_time += time.second
+            new_time += time.minute * 60
+            new_time += time.hour * 360
+            # For all packet objects
+            for p in IPV6_LIST_IN:
+                # Calculates old packet time in seconds
+                old_time  = p.time.microsecond / 1000000000
+                old_time += p.time.second
+                old_time += p.time.minute * 60
+                old_time += p.time.hour * 360
+                # If packet was not recently updated, reset warning flags
+                if (new_time - old_time) > FLAG_TIMEOUT:
+                    # Lock warnings until next packet is received
+                    p.lockWarningFlags = True
+                    # Reset flags
+                    p.showDPortWarning = True
+                    p.showSYNWarning = True
+                    p.showFINWarning = True
+                    p.showACKWarning = True
+                    p.showRSTWarning = True
+                    p.showStreamWarning = True
+                    p.showSPortWarning = True
+                # Prevents idle packets
+                if not p.lockWarningFlags:
+                    # Check for multiple port scanning
+                    if len(p.dport) > DPORT_LIMIT:
+                        if p.showDPortWarning:
+                            self.echo("Warning: "+p.formatIpString(p.sip)+" scanning multiple ports.\n" );
+                            p.showDPortWarning = False
+                    # Check for suspicions behavior(changing source port)
+                    if len(p.sport) > SPORT_LIMIT:
+                        if p.showSPortWarning:
+                            self.echo("Warning: "+p.formatIpString(p.sip)+" suspicious behavior. Multiple packets from different ports.\n" );
+                            p.showSPortWarning = False                        
+                    # Checks for fast stream of packets
+                    if float(p.var_avg_interval.get()) < STREAM_INTERVAL_LIMIT:
+                        if p.showStreamWarning:
+                            self.echo("Warning: "+p.formatIpString(p.sip)+" sending packet stream with average interval of "+p.var_avg_interval.get()+" seconds.\n")
+                            p.showStreamWarning = False
+                    # Check for types of attacks                    
+                    if p.var_syn_len.get() > SYN_LIMIT:
+                        if p.showSYNWarning:
+                            self.echo("Warning: "+p.formatIpString(p.sip)+" sent over "+str(SYN_LIMIT)+" SYN packets. Possible TCP Connect attack.\n")
+                            # TCP Connect
+                            # TCP Half Openning
+                            p.showSYNWarning = False
+                    if p.var_fin_len.get() > FIN_LIMIT:
+                        if p.showFINWarning:
+                            # TCP Fin(Stealth Scan
+                            self.echo("Warning: "+p.formatIpString(p.sip)+" sent over "+str(FIN_LIMIT)+" FIN packets. Possible TCP Stealth Scan attack.\n")
+                            p.showFINWarning = False
+                    if p.var_ack_len.get() > ACK_LIMIT:
+                        if p.showACKWarning:
+                            # TCP SYN/ACK
+                            self.echo("Warning: "+p.formatIpString(p.sip)+" sent over "+str(ACK_LIMIT)+" ACK packets. Possible SYN/ACK attack.\n")
+                            p.showACKWarning = False
+                    if p.var_rst_len.get() > RST_LIMIT:
+                        if p.showRSTWarning:
+                            # TCP Half Openning
+                            self.echo("Warning: "+p.formatIpString(p.sip)+" sent over "+str(RST_LIMIT)+" RST packets. Possible TCP Half Openning attack.\n")
+                            p.showRSTWarning = False
 
-        # Check for IPv6 only
-        if (protocol_type == int(PROTOCOL_TYPE_IPV6)):
-            print("Received IPv6 packet inside thread.")
-
-            # Get TCP header
-            tcp_header = unpack('!HHLLBBHHH', packet[54:74])
-
-            # Get TCP flags
-            flags = int(tcp_header[5])
-
-            # TODO: GET ATTACKER IP ADDRESS
-
-            # Get attacker MAC address
-            source_mac = get_source_mac(eth_header)
-
-            # Get port number
-            port = int(tcp_header[1])
-
-            # Checking types of attack 
-            if (source_mac == src_address and port == target_port):
-                if(flags == FLAGS_ACK):
-                    print("!! RECEIVED A TCP CONNECT ATTACK FROM MAC ADDRESS {} on port {} !!".format(source_mac, target_port))
-                    break
-                elif(flags == FLAGS_RST):
-                    print("!! RECEIVED A TCP HALF OPENING ATTACK FROM MAC ADDRESS {} on port {} !!".format(source_mac, target_port))
-                    break
-        
-        # Timeout stop condition
-        if wait_until < datetime.now():
-            break_loop = True
-
-    print("Exiting thread...")
-
-def get_source_mac(eth_header):
-    """
-    Helper function to get a readable 'src mac address' from bytes
-    """
-
-    # Unpack
-    unpacked_eth_header = unpack('!6B6BH', eth_header)
-
-    # Get attacker MAC address
-    raw_source_mac = unpacked_eth_header[6:12]
-
-    # Stringfy mac address
-    source_mac = ""
-    for m in raw_source_mac:
-        source_mac = source_mac + format(m, '02x') + ":"
-
-    # Remove last ':'
-    source_mac = source_mac[:-1]
-
-    return source_mac
-
-def lisssstener(wnd):
-    """
-    This listener represents the main attack detection component.
-    """
-
-    global SHUTDOWN
-    global IPV6_LIST_IN
-
-    # Creates raw socket
-    listen = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(3))
-
-    print("Starting Listener...")
-    while not SHUTDOWN:
-        # We should put this packet receiving code inside a single function for reusability
-        # Receive packet
-        raw_packet = listen.recvfrom(65565)
-        packet = raw_packet[0]
-        # Get ethernet header
-        eth_header = packet[0:14]
-
-        # Get protocol type; 0x86dd for IPv6
-        protocol_type = unpack('!6B6BH', eth_header)[12]
-
-        #Next header
-        next_header = (packet.hex()[40:42])
-
-        # Check if TCP IPv6
-        if (protocol_type == int(PROTOCOL_TYPE_IPV6) and next_header == "06"):
-
-            # Add packet to list
-            # Check for port
-            if IPV6_LIST_IN == []:
-                IPV6_LIST_IN.append( packetStorage(packet, datetime.now()))
-            else:
-                for p in IPV6_LIST_IN:
-                    if not p.checkIfIpStored(packet):
-                        IPV6_LIST_IN.append( packetStorage(packet, datetime.now()))
-                    if not p.checkIfPortStored(packet):
-                        p.dport.append(packet[56:58].hex())
-                        print(p.sip, " -> ", p.dport)
-                        break
-
-            #print(IPV6_LIST_IN)
-
-            # Get TCP header
-            tcp_header = unpack('!HHLLBBHHH', packet[54:74])
-            # Get TCP flags
-            flags = int(tcp_header[5])
-            # Get source IPv6 address and store in list
-            source_address = packet[22:38].hex()
-            
-            # Source address to string
-            sa = (source_address[ 0: 4]+"::"+
-                  source_address[ 4: 8]+":" +
-                  source_address[ 8:12]+":" +
-                  source_address[12:16]+":" +
-                  source_address[16:20]+":" +
-                  source_address[24:28]+":" +
-                  source_address[28:32])
-            # Get source MAC address
-            source_mac = get_source_mac(eth_header)
-            #print("TCP IPv6 packet from IP, MAC: {} {}".format(sa,source_mac))
-
-            # Get target port
-            target_port = int(tcp_header[1])
-
-            # TCP Connect Attack and Half-opening handling
-            #if (flags == FLAGS_SYN):
-                # Starts new thread that waits for ACK or RST
-                #start_new_thread(threaded, (listen, source_mac, target_port,))
-
-            # Stealth scan / TCP FIN handling
-            #elif (flags == FLAGS_FIN):
-                #print("!! RECEIVED STEALTH SCAN/TCP FIN FROM MAC ADDRESS {} on port {} !!".format(source_mac, target_port))
-
-            # SYN/ACK attack handling
-            #elif (flags == FLAGS_SYN_ACK):
-                #print("!! RECEIVED SYN/ACK ATTACK FROM MAC ADDRESS {} on port {} !!".format(source_mac, target_port))
-        
 
 if __name__ == "__main__":
     root = tk.Tk()
     root.option_add("*Font", "courier 10")
-    window = listenerWindow(root)
-    window.listernerThread.start()
+    window = listener_window(root)
+    window.listener_thread.start()
     root.mainloop()
-    #listener()
