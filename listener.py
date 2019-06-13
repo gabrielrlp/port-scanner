@@ -13,7 +13,7 @@ PROTOCOL_TYPE_IPV6 = 0x86dd
 # 000010
 FLAGS_SYN = 2
 # 010010 
-FLAGS_SYN_ACK = 18
+FLAGS_SYNACK = 18
 # 000001
 FLAGS_FIN = 1
 # 000100
@@ -28,12 +28,13 @@ SPORT_LIMIT = 5
 # Socket stream interval threshold for fast stream warning
 STREAM_INTERVAL_LIMIT = 0.01
 # Show warning after this number of repeated flags
-SYN_LIMIT   = 5
-FIN_LIMIT   = 5
-ACK_LIMIT   = 5
-RST_LIMIT   = 5
+SYNACK_LIMIT = 5
+SYN_LIMIT    = 5
+FIN_LIMIT    = 5
+ACK_LIMIT    = 5
+RST_LIMIT    = 5
 # After this period(seconds), warning flags will be reseted
-FLAG_TIMEOUT= 10
+FLAG_TIMEOUT = 10
 
 ## General
 # Window configuration
@@ -45,9 +46,12 @@ SHUTDOWN = False
 PACKET_QUEUE = []
 # List of objects that represents received IPv6 TCP packets
 IPV6_LIST_IN = []
-# Debug flags
-DEBUG_RANDOM_IPS = 0
+# List sort mode
+# 1 = Sort by number of uniques ports scanned
+SORT_MODE = 1
 
+## Debug flags
+DEBUG_RANDOM_IPS = 0
 
 class packet_storage:
     def __init__(self, packet, time, display):
@@ -72,6 +76,7 @@ class packet_storage:
 
         self.lockWarningFlags = False
         self.showDPortWarning = True
+        self.showSYNACKWarning= True
         self.showSYNWarning = True
         self.showFINWarning = True
         self.showACKWarning = True
@@ -82,13 +87,17 @@ class packet_storage:
         # Fast test for multiple display lines
         if DEBUG_RANDOM_IPS: self.sip  = self.randomString(len(self.sip))
 
-        self.frm_line = tk.Frame(display, width = 1280-476, height = 20, bg = 'white smoke')
+        self.frm_line = tk.Frame(display, width = 1280-432, height = 20, bg = 'white smoke')
         self.lbl_ip = tk.Label(self.frm_line, width = 35, text = self.formatIpString(self.sip), bg = 'white smoke')
+        self.dport_len = 1;
         self.var_dport_len = tk.IntVar()
         self.var_dport_len.set(len(self.dport))
         self.lbl_dport_len = tk.Label(self.frm_line, width = 5, textvariable = self.var_dport_len, bg = 'gainsboro')
         
         # Labels and variables that represent the number of times that 'X' flag was used by 'Y' IPv6.
+        self.var_synack_len = tk.IntVar()
+        self.var_synack_len.set(0)
+        self.lbl_synack_count = tk.Label(self.frm_line, width = 5, textvariable = self.var_synack_len, bg = 'white smoke')
         self.var_syn_len = tk.IntVar()
         self.var_syn_len.set(0)
         self.lbl_syn_count = tk.Label(self.frm_line, width = 5, textvariable = self.var_syn_len, bg = 'white smoke')
@@ -113,12 +122,13 @@ class packet_storage:
         self.frm_line.place(     x = 0,        y = 0)
         self.lbl_ip.place(       x = 5,        y = 0)
         self.lbl_dport_len.place(x = 289,      y = 0)
-        self.lbl_syn_count.place(x = 289+44,   y = 0)
-        self.lbl_ack_count.place(x = 289+44*2, y = 0)
-        self.lbl_rst_count.place(x = 289+44*3, y = 0)
-        self.lbl_fin_count.place(x = 289+44*4, y = 0)
-        self.lbl_timestamp.place(x = 289+44*5, y = 0)
-        self.lbl_avg_intervarl.place( x = 642, y = 0)
+        self.lbl_synack_count.place(x = 289+44,   y = 0)
+        self.lbl_syn_count.place(x = 289+44*2, y = 0)
+        self.lbl_ack_count.place(x = 289+44*3, y = 0)
+        self.lbl_rst_count.place(x = 289+44*4, y = 0)
+        self.lbl_fin_count.place(x = 289+44*5, y = 0)
+        self.lbl_timestamp.place(x = 289+44*6, y = 0)
+        self.lbl_avg_intervarl.place( x = 686, y = 0)
 
         self.update_flags(packet[66:68].hex())
 
@@ -136,9 +146,11 @@ class packet_storage:
         Updates flag counter and idle lock
         """
         self.lockWarningFlags = False
-        if int(flags)&FLAGS_SYN:
+        if int(flags)&FLAGS_SYNACK:
+            self.var_synack_len.set(self.var_synack_len.get()+1)
+        elif int(flags)&FLAGS_SYN:
             self.var_syn_len.set(self.var_syn_len.get()+1)
-        if int(flags)&FLAGS_ACK:
+        elif int(flags)&FLAGS_ACK:
             self.var_ack_len.set(self.var_ack_len.get()+1)
         if int(flags)&FLAGS_RST:
             self.var_rst_len.set(self.var_rst_len.get()+1)
@@ -207,7 +219,6 @@ class packet_storage:
         return False
 
 
-
     # Checks if dport was already used by given ip packet
     def check_if_port_stored(self, packet):
         global IPV6_LIST_IN
@@ -232,6 +243,7 @@ class listener_window:
         self.master.geometry(WND_RESOLUTION)
         self.w, self.h = WND_RESOLUTION.split("x",1)
         self.w, self.h = int(self.w), int(self.h)
+        self.display_width = self.w-414
         # Thread that represents the listener
         self.listener_thread = threading.Thread(target = self.listener)
         # Thread that represents the connection monitor
@@ -239,13 +251,13 @@ class listener_window:
         # Main frame, parent of all widgets
         self.frm_main = tk.Frame(master, width = self.w, height = self.h, bg = 'white')
         # Meaning of each field on the window connections display
-        subtitles  ="                                    Port                              Last        Average interval     \n"
-        subtitles +="                 IPv6               range #SYN  #ACK #RST  #FIN     Timestamp     between  packets     "
-        self.lbl_subtitles = tk.Label(self.frm_main, width = 100, text = subtitles, bg = 'white', anchor = tk.W, justify = tk.LEFT, highlightthickness = 3, highlightbackground = 'silver' )
+        subtitles  ="                                    Port  #SYN                            Last        Average interval     \n"
+        subtitles +="                 IPv6               range /ACK #SYN  #ACK #RST  #FIN     Timestamp     between  packets     "
+        self.lbl_subtitles = tk.Label(self.frm_main, width = 107, text = subtitles, bg = 'white', anchor = tk.W, justify = tk.LEFT, highlightthickness = 3, highlightbackground = 'silver' )
         # Display frame, where informations about connections are displayed
-        self.frm_display = tk.Frame(self.frm_main, width = (self.w-470), height = (self.h-336), bg = 'white smoke', highlightthickness = 3, highlightbackground = 'silver')
+        self.frm_display = tk.Frame(self.frm_main, width = self.display_width, height = (self.h-336), bg = 'white smoke', highlightthickness = 3, highlightbackground = 'silver')
         # Frame where text warnings are displayed
-        self.frm_console = tk.Frame(self.frm_main, width = (self.w-470), height = (280), bg = 'white', highlightthickness = 3, highlightbackground = 'silver')
+        self.frm_console = tk.Frame(self.frm_main, width = self.display_width, height = (280), bg = 'white', highlightthickness = 3, highlightbackground = 'silver')
         self.scr_console = tk.Scrollbar(self.frm_console)
         self.txt_console = tk.Text(self.frm_console, width = 112, height = 19, font = ("courier", "9"))
         # Button to exit the software
@@ -265,10 +277,18 @@ class listener_window:
 
     def update_label_grid(self):
         """
-        Updates the placement of lines on the connections display
+        Sorts and updates the placement of lines on the connections display
         """
+        global IPV6_LIST_IN, SORT_MODE, SHUTDOWN
+        # Sort by number of unique ports scaned
+        if SORT_MODE == 1:
+            IPV6_LIST_IN.sort(key=lambda packet_storage: packet_storage.dport_len, reverse=True) 
+            #for pckt in IPV6_LIST_IN:
+
         aux = 0;
         for pckt in IPV6_LIST_IN:
+            if SHUTDOWN:
+                break
             pckt.frm_line.pack_forget()
             pckt.frm_line.place(x = 0, y = (0 + 20*aux))
             aux += 1
@@ -283,7 +303,6 @@ class listener_window:
         SHUTDOWN = 1
         self.listener_thread.join()
         self.master.quit()
-
 
 
     def handle_packet_quere(self, *args):
@@ -389,6 +408,7 @@ class listener_window:
                     p.lockWarningFlags = True
                     # Reset flags
                     p.showDPortWarning = True
+                    p.showSYNACKWarning = True
                     p.showSYNWarning = True
                     p.showFINWarning = True
                     p.showACKWarning = True
@@ -408,32 +428,37 @@ class listener_window:
                             self.echo("Warning: "+p.formatIpString(p.sip)+" suspicious behavior. Multiple packets from different ports.\n" );
                             p.showSPortWarning = False                        
                     # Checks for fast stream of packets
-                    if float(p.var_avg_interval.get()) < STREAM_INTERVAL_LIMIT:
+                    if float(p.var_avg_interval.get()) < STREAM_INTERVAL_LIMIT and (p.var_avg_interval.get()!="0.0"):
                         if p.showStreamWarning:
                             self.echo("Warning: "+p.formatIpString(p.sip)+" sending packet stream with average interval of "+p.var_avg_interval.get()+" seconds.\n")
                             p.showStreamWarning = False
                     # Check for types of attacks                    
-                    if p.var_syn_len.get() > SYN_LIMIT:
-                        if p.showSYNWarning:
-                            self.echo("Warning: "+p.formatIpString(p.sip)+" sent over "+str(SYN_LIMIT)+" SYN packets. Possible TCP Connect attack.\n")
-                            # TCP Connect
-                            # TCP Half Openning
-                            p.showSYNWarning = False
+                    if p.var_synack_len.get() > SYNACK_LIMIT:
+                        if p.showSYNACKWarning:
+                            self.echo("Warning: "+p.formatIpString(p.sip)+" sent over "+str(SYNACK_LIMIT)+" SYN packets. Possible SYNACK attack.\n")
+                            # SYNACK
+                            p.showSYNACKWarning = False
+                    else:
+                        if p.var_syn_len.get() > SYN_LIMIT:
+                                # TCP Half Openning
+                                if p.var_rst_len.get() > RST_LIMIT:
+                                    if p.showRSTWarning:
+                                        # TCP Half Openning
+                                        self.echo("Warning: "+p.formatIpString(p.sip)+" sent over "+str(RST_LIMIT)+" RST packets. Possible TCP Half Openning attack.\n")
+                                        p.showRSTWarning = False
+                                elif p.var_ack_len.get() > ACK_LIMIT:
+                                    if p.showACKWarning:
+                                        # TCP connect
+                                        self.echo("Warning: "+p.formatIpString(p.sip)+" sent over "+str(ACK_LIMIT)+" ACK packets. Possible TCP Connect attack.\n")
+                                        p.showACKWarning = False
+                                elif p.showSYNWarning:
+                                    self.echo("Warning: "+p.formatIpString(p.sip)+" sent over "+str(SYN_LIMIT)+" SYN packets.\n")
+                                    p.showSYNWarning = False
                     if p.var_fin_len.get() > FIN_LIMIT:
                         if p.showFINWarning:
                             # TCP Fin(Stealth Scan
                             self.echo("Warning: "+p.formatIpString(p.sip)+" sent over "+str(FIN_LIMIT)+" FIN packets. Possible TCP Stealth Scan attack.\n")
                             p.showFINWarning = False
-                    if p.var_ack_len.get() > ACK_LIMIT:
-                        if p.showACKWarning:
-                            # TCP SYN/ACK
-                            self.echo("Warning: "+p.formatIpString(p.sip)+" sent over "+str(ACK_LIMIT)+" ACK packets. Possible SYN/ACK attack.\n")
-                            p.showACKWarning = False
-                    if p.var_rst_len.get() > RST_LIMIT:
-                        if p.showRSTWarning:
-                            # TCP Half Openning
-                            self.echo("Warning: "+p.formatIpString(p.sip)+" sent over "+str(RST_LIMIT)+" RST packets. Possible TCP Half Openning attack.\n")
-                            p.showRSTWarning = False
 
 
 if __name__ == "__main__":
