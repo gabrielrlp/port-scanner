@@ -28,7 +28,7 @@ class listener_window:
         self.master.geometry(WND_RESOLUTION)
         self.w, self.h = WND_RESOLUTION.split("x",1)
         self.w, self.h = int(self.w), int(self.h)
-        self.display_width = self.w-414
+        self.display_width = self.w-134
         # Thread that represents the listener
         self.listener_thread = threading.Thread(target = self.listener)
         # Thread that represents the connection monitor
@@ -38,6 +38,7 @@ class listener_window:
                                  width = self.w,
                                  height = self.h,
                                  bg = 'white')
+
         # Meaning of each field on the window connections display
         upper_line  = "                                    Port"
         upper_line += "  #SYN"
@@ -65,6 +66,7 @@ class listener_window:
                                       justify = tk.LEFT, anchor = tk.W,
                                       highlightthickness = 3, 
                                       highlightbackground = 'silver')
+
         # Display frame, where informations about connections are displayed
         self.frm_display = tk.Frame(master = self.frm_main,
                                     width = self.display_width,
@@ -72,33 +74,38 @@ class listener_window:
                                     bg = 'white smoke',
                                     highlightthickness = 3,
                                     highlightbackground = 'silver')
+
         # Frame where text warnings are displayed
         self.frm_console = tk.Frame(master = self.frm_main,
                                     width = self.display_width, height = 280,
                                     bg = 'white',
                                     highlightthickness = 3,
                                     highlightbackground = 'silver')
+
         self.scr_console = tk.Scrollbar(self.frm_console)
         self.txt_console = tk.Text(master = self.frm_console,
                                    width = 120, height = 19,
                                    font = ("courier", "9"))
+
         # Button to exit the software
-        self.btn_close = tk.Button(self.frm_main, text="Exit",
+        self.btn_close = tk.Button(master = self.frm_main,
+                                   height = 2, width = 9,
                                    command = self.quit_listener,
-                                   height = 2, width = 6,
+                                   text="Exit",
                                    bg = 'white',
                                    activebackground = 'white smoke' )
+
         # Placement of widgets
         self.frm_main.place(x = 0, y = 0)
         self.lbl_subtitles.place( x = 10, y = 10)
         self.frm_display.place( x = 10, y =  50 )
-        self.frm_console.place( x = 10, y = 392 )
+        self.frm_console.place( x = 10, y = 393 )
         #self.txt_console.place( x =  0, y =   0 )
         self.txt_console.pack(side = tk.LEFT, fill = tk.Y)
         self.scr_console.pack(side = tk.RIGHT, fill = tk.Y)
         self.scr_console.config(command = self.txt_console.yview)
         self.txt_console.config(yscrollcommand = self.scr_console.set)
-        self.btn_close.place(x = 1195, y = (self.h-55))
+        self.btn_close.place(x = 888, y = (self.h-55))
 
 
     def update_label_grid(self):
@@ -147,83 +154,94 @@ class listener_window:
         self.master.quit()
 
 
-    # Checks if IP is already stored, returns true if it is
     def check_if_ip_stored(self, packet):
-        global PACKET_OBJECT_LIST
+        """
+         Checks if IPv6 from pcket is already stored, returns true if stored.
+        """
+        global PACKET_OBJECT_LIST, SHUTDOWN
         # Check if ipv6 list is empty
         if PACKET_OBJECT_LIST == []:
             return False
         for p in PACKET_OBJECT_LIST:
+            if SHUTDOWN:
+                break
             if p.sip == packet[22:38].hex():
                 return True
         return False
+
+
+    def handle_packet_queue(self, *args):
+        """
+         Callback for 'self.var_new_packet'. Picks packet  from queue and sends
+        it to handle_packet(self, packet, time).
+        """
+        global SHUTDOWN, PACKET_OBJECT_LIST
+        if self.var_new_packet.get():
+            # Prioritize processing all packets on queue
+            while len(PACKET_QUEUE) > 0:
+                if SHUTDOWN:
+                    break
+
+                # Selects a packet to proccess and removes it from the list
+                packet = PACKET_QUEUE[0].pop()
+
+                # Creates the object's timestamp
+                time = datetime.now()
+
+                self.handle_packet(packet, time)
+
+                # Sorts and updates the placement of the display's lines
+                self.update_label_grid()
+
+            self.var_new_packet.set(False)
 
 
     def handle_packet(self, packet, time):
         """
         Process packets on queue.
         """
-        global PACKET_OBJECT_LIST
-        # If there no objects on list, immediately creates ones.
+        global PACKET_OBJECT_LIST, SHUTDOWN
         if PACKET_OBJECT_LIST == []:
+            # If there no objects on list, immediately creates ones.
             PACKET_OBJECT_LIST.append((packet_storage(packet,
                                                       time,
                                                       self.frm_display)))
         else:
-            # If a packet of this source is not present on the list,
-            #create a storage object for it.
             if not self.check_if_ip_stored(packet):
+                # If a packet of this source is not present on the list, create
+                #a storage object for it.
                 PACKET_OBJECT_LIST.append((packet_storage(packet,
                                                           time,
                                                           self.frm_display)))
                 return# DOUBLE TEST THIS BREAK
             else:
                 for p in PACKET_OBJECT_LIST:
-                    # If source already has a storage object and this port was
-                    #not previously used,  add port  to list and  update flags
-                    #and timestamp
+                    if SHUTDOWN:
+                        break
                     if p.sip == packet[22:38].hex():
+                        # If  source already has a storage object and this port
+                        #was not previously  used, add port to list and  update
+                        #flags and timestamp
                         if not p.check_if_port_stored(packet):
                             p.add_port((packet[56:58].hex()))
                             p.update_flags(packet[67:68].hex())
-                            p.update_timestamp(time)
-                        # In most cases, repeated packets will end up here.
-                        #Update flags/timestamp
                         else:
+                            # In most cases, repeated packets will end up here.
                             p.update_flags(packet[67:68].hex())
-                        p.update_timestamp(time)
                         return
-
-
-    def handle_packet_queue(self, *args):
-        """
-        Callback for var_new_flag.
-        """
-        global SHUTDOWN, PACKET_OBJECT_LIST
-        if self.var_new_packet.get():
-            while len(PACKET_QUEUE) > 0:
-                # Selects a packet to proccess and removes it from the list
-                if SHUTDOWN:
-                    break
-
-                packet = PACKET_QUEUE.pop()
-
-                time = datetime.now()
-
-                self.handle_packet(packet, time)
-
-                self.update_label_grid()
-
-            self.var_new_packet.set(False)
+                        p.update_timestamp(time)
 
 
     def echo(self, text):
+        """
+        Displays text on 'self.txt_console'
+        """
         self.txt_console.insert(tk.END, text)
 
 
     def listener(self):
         """
-        This listener represents the main attack detection component.
+        Represents the main packect reception component.
         """
         global SHUTDOWN
         global PACKET_OBJECT_LIST
@@ -231,9 +249,10 @@ class listener_window:
         listen = socket.socket(socket.AF_PACKET,
                                socket.SOCK_RAW,
                                socket.htons(3))
+        # Starts 'connection_monitor' thread that looks for attacks
         self.monitor_thread.start()
-        # Main loop
         while not SHUTDOWN:
+            # Main loop
             # Receive packet
             raw_packet = listen.recvfrom(65565)
             packet = raw_packet[0]
@@ -258,9 +277,10 @@ class listener_window:
                 #length = len(packet)
                 #packet = packet.encode(encoding = 'UTF-8')
 
-                # Add packet to queue
-                PACKET_QUEUE.append(packet)
+                # Add packet  to queue. Packets will be  processed outside this
+                #thread. See 'handle_packet_queue' and 'handle_packet'.
                 self.var_new_packet.set(True)
+                PACKET_QUEUE.append(packet)
 
         self.monitor_thread.join()
 
@@ -274,21 +294,23 @@ class listener_window:
         global SHUTDOWN, DPORT_LIMIT, STREAM_INTERVAL_LIMIT
         global PACKET_OBJECT_LIST, FLAG_TIMEOUT, SYN_LIMIT
         global ACK_LIMIT, FIN_LIMIT, RST_LIMIT, SPORT_LIMIT
+        global u_SEC, MINUTE, HOUR
 
         while not SHUTDOWN:
             # Calculates present time in seconds
             time = datetime.now()
-            new_time  = time.microsecond / 1000000000
+            new_time  = time.microsecond*u_SEC
             new_time += time.second
-            new_time += time.minute * 60
-            new_time += time.hour * 360
-            # For all packet objects
+            new_time += time.minute*MINUTE
+            new_time += time.hour*HOUR
             for p in PACKET_OBJECT_LIST:
-                # Calculates old packet time in seconds
-                old_time  = p.time.microsecond / 1000000000
+                if SHUTDOWN:
+                    break
+                # Calculates stored packet time in seconds
+                old_time  = p.time.microsecond*u_SEC
                 old_time += p.time.second
-                old_time += p.time.minute * 60
-                old_time += p.time.hour * 360
+                old_time += p.time.minute*MINUTE
+                old_time += p.time.hour*HOUR
                 # If packet was not recently updated, reset warning flags
                 if (new_time - old_time) > FLAG_TIMEOUT:
                     # Lock warnings until next packet is received
@@ -315,65 +337,81 @@ class listener_window:
                     if len(p.dport) > DPORT_LIMIT and p.showDPortWarning:
                         self.echo(p.formatIpString(p.sip)
                                 + " scanning multiple ports.\n" );
+
                         p.showDPortWarning = False
                     # Check for suspicions behavior(changing source port)
                     if len(p.sport) > SPORT_LIMIT and p.showSPortWarning:
                         self.echo(p.formatIpString(p.sip
                                 + " suspicious behavior. Multiple packets"
                                 + " from different ports.\n" ))
+
                         p.showSPortWarning = False                        
                     # Checks for fast stream of packets
                     if (float(p.var_avg_interval.get()) < STREAM_INTERVAL_LIMIT
                             and (p.var_avg_interval.get()!="0.0")
                             and (p.showStreamWarning)):
+
                         self.echo(p.formatIpString(p.sip)
                                 + " sending packet stream with average"
                                 + " interval of " + p.var_avg_interval.get()
                                 + " seconds.\n")
+
                         p.showStreamWarning = False
                     # Check for types of attacks                    
                     # SYNACK    
                     if (p.var_synack_len.get() > SYNACK_LIMIT
                             and p.showSYNACKWarning): 
+
                         self.echo(p.formatIpString(p.sip) + " sent over "
                                 + str(SYNACK_LIMIT)
-                                + " SYN packets. Possible SYNACK attack.\n")    
+                                + " SYN packets. Possible SYNACK attack.\n")
+
                         p.showSYNACKWarning = False
                     # TCP Fin(Stealth Scan
                     if (p.var_fin_len.get() > FIN_LIMIT 
                             and p.showFINWarning):
+
                         self.echo(p.formatIpString(p.sip) + " sent over "
                                 + str(FIN_LIMIT)
                                 + " FIN packets. Possible TCP Stealth"
                                 + " Scan attack.\n")
+
                         p.showFINWarning = False
                     if p.var_syn_len.get() > SYN_LIMIT:
                         if p.showSYNWarning:
                             self.echo(p.formatIpString(p.sip) + " sent over "
                                     + str(SYN_LIMIT) + " SYN packets.\n")
+
                             p.showSYNWarning = False
                         # TCP Half Openning
                         if (p.var_rst_len.get() > RST_LIMIT
                                 and p.showRSTWarning):
-                            self.echo(p.formatIpString(p.sip) + " sent over "
-                                    + str(RST_LIMIT)
-                                    + " RST packets. Possible TCP Half"
-                                    + " Openning attack.\n")
-                            p.showRSTWarning = False
+
+                            if p.check_tcp_half_openning():
+                                self.echo(p.formatIpString(p.sip) + " sent over "
+                                        + str(RST_LIMIT)
+                                        + " RST packets. Possible TCP Half"
+                                        + " Openning attack.\n")
+
+                                p.showRSTWarning = False
                         # TCP connect
                         if (p.var_ack_len.get() > ACK_LIMIT
                                 and p.showACKWarning):
-                            self.echo(p.formatIpString(p.sip) + " sent over "
-                                    + str(ACK_LIMIT)
-                                    + " ACK packets. Possible TCP Connect"
-                                    + " attack.\n")
-                            p.showACKWarning = False
+
+                            if p.check_tcp_connect():
+                                self.echo(p.formatIpString(p.sip) + " sent over "
+                                        + str(ACK_LIMIT)
+                                        + " ACK packets. Possible TCP Connect"
+                                        + " attack.\n")
+
+                                p.showACKWarning = False
 
                     # Calculates the 'warning count score'
                     this_warning_count = 0
                     p.dport_len = p.var_dport_len.get()
                     if not(p.showDPortWarning):
                         this_warning_count += p.dport_len
+
                     this_warning_count += (10*p.showSYNACKWarning +
                                            10*p.showSYNWarning +
                                            10*p.showFINWarning +
@@ -381,6 +419,7 @@ class listener_window:
                                            10*p.showRSTWarning +
                                            10*p.showStreamWarning +
                                            25*p.showSPortWarning)
+
                     p.warning_count = this_warning_count
                     p.var_warning_counter.set(this_warning_count)
 
