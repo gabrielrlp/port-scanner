@@ -425,7 +425,6 @@ class listener_window:
 
 
 if __name__ == "__main__":
-    print("check tcp connect and half oppenning. check sort modes. check SHUTDOWN values for threads")
     root = tk.Tk()
     root.option_add("*Font", "courier 10")
     window = listener_window(root)
